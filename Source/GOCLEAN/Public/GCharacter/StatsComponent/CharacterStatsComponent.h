@@ -32,7 +32,13 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Net/UnrealNetwork.h"
 #include "CharacterStatsComponent.generated.h"
+
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLifeChanged, int32, NewLife);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSanityChanged, float, NewSanity);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMoveSpeedChanged, float, NewDefaultSpeed);
 
 
 UCLASS( meta=(BlueprintSpawnableComponent) )
@@ -43,6 +49,18 @@ class GOCLEAN_API UCharacterStatsComponent : public UActorComponent
 public:	
 	UCharacterStatsComponent();
 
+public:
+	// UI가 바인딩해서 쓰는 레퍼런스용 콜백
+	UPROPERTY(BlueprintAssignable, Category = "UI")
+	FOnLifeChanged OnLifeChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "UI")
+	FOnSanityChanged OnSanityChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "UI")
+	FOnMoveSpeedChanged OnMoveSpeedChanged;
+
+public:
 
 
 	// Getter, Setter //
@@ -79,7 +97,8 @@ public:
 	// Respawn //
 	void ResetStats();
 
-
+protected:
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
 	// Overidded //
@@ -130,4 +149,15 @@ private:
 	float WalkSpeed;
 	float CrouchSpeed;
 	float SprintSpeed;
+
+
+private:
+	UFUNCTION()
+	void OnRep_Life();
+
+	UFUNCTION()
+	void OnRep_CurrentSanity();
+
+	UFUNCTION()
+	void OnRep_DefaultSpeed();
 };

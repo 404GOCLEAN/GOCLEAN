@@ -27,12 +27,20 @@ public:
 
 public:
 
-	// C → S 오브젝트 이벤트
+	// C -> S 오브젝트 이벤트
 	UFUNCTION(Server, Reliable)
 	void Server_ObjectEvent(EObjectEvent_C2S EventType, const FObjectPayload_C2S& Payload);
 
-	// S → C 오브젝트 이벤트
+	// S -> C 오브젝트 이벤트
 	UFUNCTION(Client, Reliable)
 	void Client_ObjectEvent(EObjectEvent_S2C EventType, const FObjectPayload_S2C& Payload);
+
+	// C -> S 플레이어 이벤트
+	UFUNCTION(Server, Reliable)
+	void Server_PlayerEvent(EPlayerEvent_C2S EventType, const FPlayerPayload_C2S& Payload);
+
+	// S -> C 플레이어 이벤트
+	UFUNCTION(Client, Reliable)
+	void Client_PlayerEvent(EPlayerEvent_S2C EventType, const FPlayerPayload_S2C& Payload);
 		
 };

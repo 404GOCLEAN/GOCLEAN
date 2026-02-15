@@ -11,6 +11,15 @@ void UCharacterStatsComponent::BeginPlay()
 	
 	// Character base stats initalize
 	InitializeStats(2, 100.0f, 10.0f, 1.0f, 1.0f, 1.0f, 400.0f);
+
+	SetIsReplicatedByDefault(true);
+
+	// 시작 시 UI 초기 갱신(클라에서)
+	if (!GetOwner() || GetOwner()->HasAuthority()) return;
+
+	OnLifeChanged.Broadcast(Life);
+	OnSanityChanged.Broadcast(CurrentSanity);
+	OnMoveSpeedChanged.Broadcast(DefaultSpeed);
 }
 
 void UCharacterStatsComponent::ResetStats()
@@ -19,6 +28,15 @@ void UCharacterStatsComponent::ResetStats()
 	SetCurrentStamina(10.0f);
 	SetDefaultSpeed(400.0f);
 	SetSanityDrainRate(10.0f);
+}
+
+void UCharacterStatsComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(UCharacterStatsComponent, Life, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UCharacterStatsComponent, CurrentSanity, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UCharacterStatsComponent, DefaultSpeed, COND_OwnerOnly);
 }
 
 void UCharacterStatsComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -57,4 +75,20 @@ void UCharacterStatsComponent::SetDefaultSpeed(float NewDefaultSpeed) {
 	WalkSpeed = NewDefaultSpeed;
 	CrouchSpeed = NewDefaultSpeed - 100;
 	SprintSpeed = NewDefaultSpeed + 300;
+}
+
+
+void UCharacterStatsComponent::OnRep_Life()
+{
+	OnLifeChanged.Broadcast(Life);
+}
+
+void UCharacterStatsComponent::OnRep_CurrentSanity()
+{
+	OnSanityChanged.Broadcast(CurrentSanity);
+}
+
+void UCharacterStatsComponent::OnRep_DefaultSpeed()
+{
+	OnMoveSpeedChanged.Broadcast(DefaultSpeed);
 }

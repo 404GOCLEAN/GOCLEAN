@@ -31,7 +31,7 @@ protected:
 
     // 시작 가능 여부 판단
     bool CanStartGame() const;
-
+    
     // 호스트 판별
     bool IsHostPlayerState(const APlayerState* PS) const;
 

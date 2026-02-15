@@ -3,10 +3,12 @@
 
 #include "ServerModule/GameSession/GameSessionState.h"
 #include <Net/UnrealNetwork.h>
+#include "ServerModule/GameSession/PlayerSessionState.h"
 
 AGameSessionState::AGameSessionState()
 {
     ObjectManager = nullptr;
+    PlayerManager = nullptr;
 
 	bReplicates = true;
 }
@@ -18,8 +20,29 @@ void AGameSessionState::BeginPlay()
     if (HasAuthority())
     {
         ObjectManager = NewObject<UGObjectManager>(this);
+        PlayerManager = NewObject<UGPlayerManager>(this);
     }
 }
+
+void AGameSessionState::PostInitializeComponents()
+{
+    Super::PostInitializeComponents();
+
+    
+    if (HasAuthority())
+    {
+        if (ObjectManager) 
+        {
+            ObjectManager = NewObject<UGObjectManager>(this);
+        }
+
+        if (!PlayerManager)
+        {
+            PlayerManager = NewObject<UGPlayerManager>(this);
+        }
+    }
+}
+
 
 void AGameSessionState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -32,6 +55,99 @@ void AGameSessionState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
     DOREPLIFETIME(AGameSessionState, AliveSurvivorCount);
     DOREPLIFETIME(AGameSessionState, FinalRewardMoney);
 }
+
+
+APlayerSessionState* AGameSessionState::GetPlayerSessionStateBySeat(int32 SeatIndex) const
+{
+    for (APlayerState* PS : PlayerArray)
+    {
+        APlayerSessionState* PSS = Cast<APlayerSessionState>(PS);
+        if (PSS && PSS->GetSeatIndex() == SeatIndex)
+        {
+            return PSS;
+        }
+    }
+    return nullptr;
+}
+
+APawn* AGameSessionState::GetPawnBySeat(int32 SeatIndex) const
+{
+    if (APlayerSessionState* PSS = GetPlayerSessionStateBySeat(SeatIndex))
+    {
+        if (APawn* Pawn = PSS->GetPawn())
+        {
+            return Pawn;
+        }
+
+        // 서버에선 PlayerController 통해 찾기
+        if (HasAuthority())
+        {
+            if (APlayerController* PC = GetPlayerControllerBySeat(SeatIndex))
+            {
+                return PC->GetPawn();
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+int32 AGameSessionState::GetSeatIndexOfPawn(const APawn* Pawn) const
+{
+    if (!Pawn)
+        return -1;
+
+    if (const APlayerState* PS = Pawn->GetPlayerState())
+    {
+        return GetSeatIndexOfPlayerState(PS);
+    }
+
+    return -1;
+}
+
+int32 AGameSessionState::GetSeatIndexOfPlayerState(const APlayerState* PlayerState) const
+{
+    const APlayerSessionState* PSS = Cast<APlayerSessionState>(PlayerState);
+    if (PSS)
+    {
+        return PSS->GetSeatIndex();
+    }
+    return -1;
+}
+
+int32 AGameSessionState::GetLocalSeatIndex() const
+{
+    if (!GetWorld())
+        return -1;
+
+    APlayerController* LocalPC = GetWorld()->GetFirstPlayerController();
+    if (!LocalPC)
+        return -1;
+
+    APlayerSessionState* PSS = Cast<APlayerSessionState>(LocalPC->PlayerState);
+    if (!PSS)
+        return -1;
+
+    return PSS->GetSeatIndex();
+}
+
+APlayerController* AGameSessionState::GetPlayerControllerBySeat(int32 SeatIndex) const
+{
+    if (!HasAuthority())
+        return nullptr;
+
+    for (APlayerState* PS : PlayerArray)
+    {
+        APlayerSessionState* PSS = Cast<APlayerSessionState>(PS);
+        if (PSS && PSS->GetSeatIndex() == SeatIndex)
+        {
+            return Cast<APlayerController>(PSS->GetOwner());
+        }
+    }
+
+    return nullptr;
+}
+
 
 static float ClampFloat(float Value, float Min, float Max)
 {

@@ -8,6 +8,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Blueprint/UserWidget.h"
+
 #include "GOCLEANPlayerController.generated.h"
 
 class UInputMappingContext;
@@ -23,7 +25,7 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "RPC")
 	URPCRouterComponent* GetRPCRouter() const { return RPCRouter; }
-	
+
 protected:
 
 	/** Input Mapping Context to be used for player input */
@@ -40,4 +42,22 @@ protected:
 	virtual void BeginPlay() override;
 
 	// End Actor interface
+
+public:
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUserWidget> TitleWidgetClass;
+
+	// 현재 띄운 위젯 인스턴스
+	UPROPERTY()
+	TObjectPtr<UUserWidget> CurrentWidget;
+
+	// 레벨별 UI 표시 함수
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowTitleUI();
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowLobbyUI();
+
+
 };
