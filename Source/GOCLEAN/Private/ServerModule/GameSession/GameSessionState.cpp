@@ -10,6 +10,7 @@
 #include <GMapSystem/Server/GMapManager.h>
 
 #include "GCharacter/StatsComponent/CharacterStatsComponent.h"
+#include "GCharacter/GOCLEANPlayerController.h"
 #include <ServerModule/GameSession/GameSessionMode.h>
 
 AGameSessionState::AGameSessionState()
@@ -509,7 +510,20 @@ void AGameSessionState::ResetSpiritualAndRestGauge(float SpiritualStartValue)
 
     // 영적=100(기본), 안식=0
     SetSpiritualGauge_Internal(FMath::Max(0.f, SpiritualStartValue));
+    // SetSpiritualGauge_Internal(FMath::Max(0.f, 1.0f));
     SetRestGauge_Internal(0.f);
+
+    bReady = true;
+}
+void AGameSessionState::PlayHUD()
+{
+    bReady = false;
+    bReady = true;
+    OnRep_bReady();
+}
+void AGameSessionState::OnRep_bReady()
+{
+    if (HUD && bReady) HUD->OnGameLevelReady();
 }
 
 void AGameSessionState::ApplySpiritualOrRestGauge( float Amount, float SpiritualMin, float SpiritualMax, float RestMin, float RestMax)
@@ -524,8 +538,20 @@ void AGameSessionState::ApplySpiritualOrRestGauge( float Amount, float Spiritual
         return;
     }
 
+    if (SpiritualGauge <= 0)
+    {
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            if (AGOCLEANPlayerController* PC = Cast<AGOCLEANPlayerController>(It->Get()))
+            {
+                PC->Client_ShowResultUI();
+                PC->ShowResultUI();
+            }
+        }
+    }
+
     // 영적이 0(또는 Min)이라면 안식 증가
-    AddRestGauge(Amount, RestMin, RestMax);
+    // AddRestGauge(Amount, RestMin, RestMax);
 }
 
 int32 AGameSessionState::GetCurrentLifeBySeat(int32 SeatIndex) const

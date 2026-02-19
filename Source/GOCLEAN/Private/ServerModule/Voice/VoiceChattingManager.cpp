@@ -202,7 +202,7 @@ void UVoiceChattingManager::Vivox_TickDebugHud()
 
     if (!bHasJoinedChannel)
     {
-        Vivox_ScreenLog(Base, FColor::Silver, 0.25f);
+//        Vivox_ScreenLog(Base, FColor::Silver, 0.25f);
         return;
     }
 

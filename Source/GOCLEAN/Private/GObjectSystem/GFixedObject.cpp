@@ -49,6 +49,17 @@ void AGFixedObject::Tick(float DeltaTime)
 
 }
 
+void AGFixedObject::ExecuteInteraction(FName EquipID, AGOCLEANCharacter* Target)
+{
+	ExecuteInteraction_Internal();
+
+	auto SpawnerComp = GetComponentByClass<UGFixedObjInteractionComponent>();
+	if (SpawnerComp && SpawnerComp->CanInteract(EquipID, Target))
+	{
+		SpawnerComp->ExecuteInteraction(EquipID, Target);
+	}
+}
+
 
 
 void AGFixedObject::ChangeState(EGFixedObjState ChangedState)

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameState.h"
+#include "GUI/Base/MyUserWidget.h"
 
 #include "GameSessionState.generated.h"
 
@@ -97,10 +98,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Session")
     APlayerController* GetPlayerControllerBySeat(int32 SeatIndex) const;
 
-
     // ≈∏¿Ã∏”
     UFUNCTION(BlueprintPure, Category = "Session")
     float BP_GetPostExorcismTimeRemaining() const { return PostExorcismTimeRemaining; }
+
+
 
 private:
     UPROPERTY()
@@ -113,15 +115,38 @@ private:
     UPROPERTY()
     UGMapManager* MapManager = nullptr;
 
+
+    // *HUD*
+    UPROPERTY()
+    UGHUDWidget* HUD = nullptr;
+
+    UPROPERTY(ReplicatedUsing="OnRep_bReady")
+    bool bReady = false;
+
+    UFUNCTION()
+    void OnRep_bReady();
+
+
+
 public:
     // Getters (Client/Server)
+    UFUNCTION(BlueprintCallable)
     float GetSpiritualGauge() const { return SpiritualGauge; }
+
     UFUNCTION(BlueprintCallable)
     float GetRestGauge() const { return RestGauge; }
     float GetExorcismProgress() const { return ExorcismProgress; }
     float GetPostExorcismTimeRemaining() const { return PostExorcismTimeRemaining; }
     int32 GetAliveSurvivorCount() const { return AliveSurvivorCount; }
     int32 GetFinalRewardMoney() const { return FinalRewardMoney; }
+
+    UFUNCTION(BlueprintCallable)
+    void SetHUD(UGHUDWidget* Target) 
+    { 
+        HUD = Target; 
+        PlayHUD();
+    }
+    void PlayHUD();
 
 
 public:
