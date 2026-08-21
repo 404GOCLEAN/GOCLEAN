@@ -13,6 +13,7 @@
 
 class AGOCLEANCharacter;
 class AGNonfixedObject;
+class AGFixedObject;
 
 
 UCLASS(Abstract, Blueprintable)
@@ -193,6 +194,8 @@ protected:
 
 private:
 	FTimerHandle BurnTimerHandle;
+
+	AGFixedObject* Incinerator;
 
 	void OnBurnTimerFinished();
 

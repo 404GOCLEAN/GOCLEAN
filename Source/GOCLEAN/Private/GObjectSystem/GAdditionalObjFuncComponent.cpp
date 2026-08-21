@@ -356,23 +356,22 @@ void UGBurningCompopnent::StartBurning(AGNonfixedObject* Owner)
 
 	// set object's transform
 	auto ObjectManager = GetWorld()->GetSubsystem<UGObjectManager>();
-	if (ObjectManager && ObjectManager->GetIncineratorActor())
-	{
-		AGFixedObject* Incinerator = ObjectManager->GetIncineratorActor();
+	if (!ObjectManager) return;
+
+	Incinerator = ObjectManager->GetIncineratorActor();
+	if (!Incinerator) return;
+
+	FBox Bounds = Incinerator->GetComponentsBoundingBox();
+
+	FVector DropLocation = Incinerator->GetActorLocation();
+	DropLocation.Z = Bounds.Max.Z + 10.f;
+
+	Owner->SetActorLocation(DropLocation);
+	Owner->SetActorRotation(FRotator::ZeroRotator);
 
 
-		FBox Bounds = Incinerator->GetComponentsBoundingBox();
-
-		FVector DropLocation = Incinerator->GetActorLocation();
-		DropLocation.Z = Bounds.Max.Z + 10.f;
-
-		
-		Owner->SetActorLocation(DropLocation);
-		Owner->SetActorRotation(FRotator::ZeroRotator);
-
-
-		Incinerator->OnCustomEvent_Bool(true);
-	}
+	// call incinerator's event function_bool > true
+	Incinerator->OnCustomEvent_Bool(true);
 
 
 	// start timer
@@ -387,10 +386,16 @@ void UGBurningCompopnent::StartBurning(AGNonfixedObject* Owner)
 
 void UGBurningCompopnent::OnBurnTimerFinished()
 {
+	if (!Incinerator) return;
+
 	AGNonfixedObject* Owner = Cast<AGNonfixedObject>(GetOwner());
 	if (Owner && Owner->GetNonfixedObjCoreComp())
 	{
 		Owner->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Destroyed);
+
+
+		// call incinerator's event function_bool > false
+		Incinerator->OnCustomEvent_Bool(false);
 	}
 }
 
