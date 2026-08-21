@@ -14,6 +14,8 @@
 #include "GDataManagerSubsystem.h"
 #include "GTypes/IGInteractable.h"
 
+#include "GMapSystem/Server/GMapManager.h"
+
 #include "ServerModule/GameSession/GameSessionState.h"
 #include "GTypes/DataTableRow/GObjectDataRow.h"
 
@@ -626,7 +628,35 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
             HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Disintegrating);
         }
 
-        // type1-2. pick type: drop object
+        // type1-2. bucket
+        else if (HeldObj->GetNonfixedObjCoreComp()->TID == "Obj_Bucket")
+        {
+            // watertank
+            AGFixedObject* Target = Cast<AGFixedObject>(PlayerChar->GetInteractionComp()->GetCurrentTarget());
+            auto MapManager = GetWorld()->GetSubsystem<UGMapManager>();
+
+            if (Target && Target == WaterTank)
+            {
+                HeldObj->GetComponentByClass<UGBucketComponent>()->FillBucket();
+            }
+
+            // outdoor
+            else if (MapManager && 
+                (MapManager->IsActorInZoneType(PlayerChar, EGZoneType::E_Outdoor) 
+                    || MapManager->IsActorInZoneType(PlayerChar, EGZoneType::E_Basecamp)))
+            {
+                HeldObj->GetComponentByClass<UGBucketComponent>()->EmptyBucket();
+            }
+
+            // drop
+            else
+            {
+                PlayerChar->DropHeldObject(CurrSlotIndex);
+                HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Static);
+            }
+        }
+
+        // type1-3. pick type: drop object
         else
         {
             // set empty - current held obj
