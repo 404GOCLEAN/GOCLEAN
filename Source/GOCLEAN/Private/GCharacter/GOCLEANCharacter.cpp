@@ -88,7 +88,8 @@ void AGOCLEANCharacter::SetPlayerCurrentSanity(float NewPlayerCurrentSanity) {
 	if (StatsComp == nullptr) return;
 	StatsComp->SetCurrentSanity(NewPlayerCurrentSanity);
 }
-
+int32 AGOCLEANCharacter::GetPlayerCurrentLife() const { return StatsComp->GetCurrentLife(); }
+void AGOCLEANCharacter::DecreaseLife(int32 Amount) { StatsComp->DecreaseLife(Amount); };
 
 // Overrided //
 void AGOCLEANCharacter::Tick(float DeltaTime)
@@ -108,7 +109,7 @@ void AGOCLEANCharacter::Tick(float DeltaTime)
 		}
 	}
 
-	StatsComp->DecreaseCurrentSanity(StatsComp->GetSanityDrainRate() * DeltaTime);
+	StatsComp->DecreaseCurrentSanity(StatsComp->GetSanityDrainRate() * StatsComp->GetSanityDrainMultiplier() * DeltaTime);
 
 	// AimPitch adjustment
 	if (IsLocallyControlled())
@@ -187,6 +188,8 @@ void AGOCLEANCharacter::TrySprintRelease()
 }
 void AGOCLEANCharacter::TryToggleFlashlight()
 {
+	if (!bCanToggleFlashlight) return;
+
 	Server_RequestToggleFlashlight();
 }
 void AGOCLEANCharacter::TryPlayerInteractionAnim()
@@ -208,6 +211,8 @@ void AGOCLEANCharacter::Server_RequestSprintRelease_Implementation()
 }
 void AGOCLEANCharacter::Server_RequestToggleFlashlight_Implementation()
 {
+	if (!bCanToggleFlashlight) return;
+
 	Multicast_ToggleFlashlight();
 }
 void AGOCLEANCharacter::Server_RequestPlayerInteractionAnim_Implementation()
@@ -241,6 +246,25 @@ void AGOCLEANCharacter::Multicast_PlayerInteractionAnim_Implementation()
 {
 	PlayerInteractionAnim();
 }
+void AGOCLEANCharacter::Multicast_SetDefaultSpeed_Implementation(float NewDefaultSpeed)
+{
+	if (StatsComp == nullptr) return;
+
+	StatsComp->SetDefaultSpeed(NewDefaultSpeed);
+
+	if (AnimState == EPlayerAnimState::Crouch)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetCrouchSpeed();
+	}
+	else if (bIsSprinting)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetSprintSpeed();
+	}
+	else
+	{
+		GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetWalkSpeed();
+	}
+}
 void AGOCLEANCharacter::Multicast_Crouch_Implementation()
 {
 	Crouch();
@@ -262,7 +286,7 @@ void AGOCLEANCharacter::Multicast_SetVisible_Implementation(bool IsVisible)
 	ThirdPersonMeshComp->SetHiddenInGame(!IsVisible);
 }
 void AGOCLEANCharacter::Multicast_PlayHuntCameraSequence_Implementation()
-{
+{ 
 	PlayHuntCameraSequence();
 }
 void AGOCLEANCharacter::Multicast_Respawn_Implementation()
@@ -339,6 +363,7 @@ void AGOCLEANCharacter::Respawn()
 	SetActorLocationAndRotation(RespawnTransform.GetLocation(), RespawnTransform.GetRotation());
 
 	StatsComp->DecreaseLife(1);
+	if (GetPlayerCurrentLife() > 0) SetPlayerCurrentSanity(100.0f);
 	StatsComp->ResetStats();
 }
 
@@ -491,7 +516,7 @@ void AGOCLEANCharacter::ToggleFlashlight()
 	FlashlightComp->ToggleVisibility();
 
 	//JSH Tmp: Animation develop WIP
-	PlayerInteractionAnim();
+	// PlayerInteractionAnim();
 }
 
 // Animation //
@@ -579,6 +604,7 @@ void AGOCLEANCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AGOCLEANCharacter, StatsComp);
 
 	DOREPLIFETIME(AGOCLEANCharacter, AimPitch);
+	DOREPLIFETIME(AGOCLEANCharacter, bCanToggleFlashlight);
 }
 
 void AGOCLEANCharacter::SetHeldObject(AGNonfixedObject* NewObj)

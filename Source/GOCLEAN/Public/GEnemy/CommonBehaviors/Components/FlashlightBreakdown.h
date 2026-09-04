@@ -12,6 +12,9 @@
 #include "GEnemy/CommonBehaviors/Base/CommonBehavior.h"
 #include "FlashlightBreakdown.generated.h"
 
+class AGOCLEANCharacter;
+class AGhostBase;
+
 UCLASS()
 class GOCLEAN_API UFlashlightBreakdown : public UCommonBehavior
 {
@@ -19,4 +22,16 @@ class GOCLEAN_API UFlashlightBreakdown : public UCommonBehavior
 	
 public:
 	virtual void ExecuteBehavior(AActor* GhostActor) override;
+
+private:
+	UPROPERTY()
+	TArray<TObjectPtr<AGOCLEANCharacter>> TargetPlayers;
+
+	void ToggleTargetFlashlights();
+	void UnlockTargetFlashlights();
+
+	FTimerHandle ToggleFlashlightHandle;
+	FTimerHandle UnlockFlashlightHandle;
+
+	int32 ToggleCount = 0;
 };

@@ -10,6 +10,7 @@
 
 #include "CoreMinimal.h"
 #include "GEnemy/CommonBehaviors/Base/CommonBehavior.h"
+#include "GEnemy/Base/GhostBase.h"
 #include "PlayFootstepSound.generated.h"
 
 UCLASS()

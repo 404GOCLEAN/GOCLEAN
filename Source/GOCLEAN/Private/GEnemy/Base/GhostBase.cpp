@@ -5,6 +5,8 @@
 #include "GEnemy/CommonBehaviors/Components/FlashlightBreakdown.h"
 #include "GEnemy/CommonBehaviors/Components/PlayFootstepSound.h"
 #include "GEnemy/GhostAIController.h"
+#include "GCharacter/GOCLEANCharacter.h"
+#include "ServerModule/GameSession/PlayerSessionState.h"
 
 
 AGhostBase::AGhostBase()
@@ -14,7 +16,7 @@ AGhostBase::AGhostBase()
 	StatsComp = CreateDefaultSubobject<UGhostStatsComponent>(TEXT("GhostStats"));
 
 	// Default variables
-	BehaviorEventCycleDelay = 12.0f;
+	BehaviorEventCycleDelay = 15.0f;
 	bCanSetBehaviourEventCycleTimer = true;
 	CurrentPatrolIndex = 0;
 
@@ -47,7 +49,8 @@ void AGhostBase::BeginPlay()
 	CommonBehaviors.Add(NewObject<UPlayFootstepSound>(this));
 
 	// Init default value
-	GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetMoveSpeed();
+	GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetBaseMovementSpeed();
+	// StatsComp->InitActivityLevel();
 
 	// Sound
 	if (RageLoopAudio && RageCue)
@@ -59,6 +62,38 @@ void AGhostBase::BeginPlay()
 	{
 		ChaseLoopAudio->SetSound(ChaseCue);
 	}
+
+	if (!HasAuthority()) return;
+
+	// Init BehaviorEventCycle
+	GetWorldTimerManager().SetTimer(GhostBehaviorEventCycleHandle, this, &AGhostBase::EvaluateBehaviorEventCondition, BehaviorEventCycleDelay, true);
+
+	// Specific event
+	GetWorldTimerManager().SetTimer(CheckPlayerSanityHalfReachedHandle, this, &AGhostBase::CheckPlayerSanityHalfReached, 1.0f, true);
+}
+
+int32 AGhostBase::GetRageModifier()
+{
+	return StatsComp->GetRageModifier();
+}
+
+float AGhostBase::GetRageCooldown()
+{
+	return StatsComp->GetRageCooldown();
+}
+
+void AGhostBase::Multicast_PlayCommonEventSound_Implementation()
+{
+	if (CommonSound == nullptr || CommonEventAttenuation == nullptr) return;
+
+	UGameplayStatics::PlaySoundAtLocation(this, CommonSound, GetActorLocation(), 1.0f, 1.0f, 0.0f, CommonEventAttenuation);
+}
+
+void AGhostBase::Multicast_PlayFootstepSound_Implementation()
+{
+	if (FootstepSound == nullptr || CommonEventAttenuation == nullptr) return;
+
+	UGameplayStatics::PlaySoundAtLocation(this, FootstepSound, GetActorLocation(), 1.0f, 1.0f, 0.0f, CommonEventAttenuation);
 }
 
 void AGhostBase::PlayRageSound()
@@ -135,24 +170,16 @@ void AGhostBase::Multicast_PlayOnHuntedSound_Implementation()
 void AGhostBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-	CheckBehaviorEventCondition();
 }
 
 
 // Behavior event //
-void AGhostBase::CheckBehaviorEventCondition()
+void AGhostBase::EvaluateBehaviorEventCondition()
 {
 	if (GhostAIController == nullptr) return;
 
-	if (GhostAIController->GetPlayerSanityCorruptionRate() >= 500 && bCanSetBehaviourEventCycleTimer) {
-		GetWorldTimerManager().SetTimer(GhostBehaviorCycleHandle, this, &AGhostBase::PerformBehaviorEvent, BehaviorEventCycleDelay, true);
-		bCanSetBehaviourEventCycleTimer = false;
-	}
-	else if (GhostAIController->GetPlayerSanityCorruptionRate() < 500 && !bCanSetBehaviourEventCycleTimer) {
-		GetWorldTimerManager().ClearTimer(GhostBehaviorCycleHandle);
-		bCanSetBehaviourEventCycleTimer = true;
-	}
+	if (GhostAIController->CheckBehaviorEventCondition())
+		PerformBehaviorEvent();
 	else return;
 }
 
@@ -193,6 +220,28 @@ void AGhostBase::PerformBehaviorEvent()
 	}
 }
 
+void AGhostBase::CheckPlayerSanityHalfReached()
+{
+	if (GhostAIController == nullptr) return;
+	
+	GhostAIController->UpdateAlivePlayerList();
+
+	for (AGOCLEANCharacter* PlayerCharacter : GhostAIController->AlivePlayers)
+	{
+		if (PlayerCharacter == nullptr) continue;
+
+		APlayerSessionState* PSS = PlayerCharacter->GetPlayerState<APlayerSessionState>();
+		if (PSS == nullptr) continue;
+
+		if (SanityHalfTriggeredPlayers.Contains(PSS)) continue;
+
+		if (PlayerCharacter->GetPlayerCurrentSanity() > 50.0f) continue;
+
+		SanityHalfTriggeredPlayers.Add(PSS);
+		OnPlayerSanityHalfReached(PSS);
+	}
+}
+
 
 // Server //
 void AGhostBase::Server_RequestSetVisible_Implementation(bool IsVisible)
@@ -202,4 +251,11 @@ void AGhostBase::Server_RequestSetVisible_Implementation(bool IsVisible)
 void AGhostBase::Multicast_SetVisible_Implementation(bool IsVisible)
 {
 	GetMesh()->SetHiddenInGame(!IsVisible);
+}
+
+void AGhostBase::NotifyUnendingRageStarted()
+{
+	if (!HasAuthority()) return;
+
+	OnUnendingRageStarted();
 }

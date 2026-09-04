@@ -71,8 +71,11 @@ public:
 	UFUNCTION(BlueprintPure)
 	bool IsSprinting() const { return bIsSprinting; }
 
+	int32 GetPlayerCurrentLife() const;
+	void DecreaseLife(int32 Amount);
 	float GetPlayerCurrentSanity() const;
 	void SetPlayerCurrentSanity(float NewPlayerCurrentSanity);
+	void SetCanToggleFlashlight(bool bCanToggle) { bCanToggleFlashlight = bCanToggle; }
 
 	UPROPERTY(Replicated)
 	EPlayerAnimState AnimState;
@@ -81,6 +84,16 @@ public:
 
 	UFUNCTION(BlueprintPure)
 	EPlayerAnimState GetAnimState() { return AnimState; }
+
+	void SetSanityDrainMultiplier(float NewSanityDrainMultiplier)
+	{
+		if (StatsComp == nullptr) return;
+
+		StatsComp->SetSanityDrainMultiplier(NewSanityDrainMultiplier);
+	}
+
+	float GetDefaultSpeed() const { return StatsComp->GetWalkSpeed(); };
+	void SetDefaultSpeed(float NewDefaultSpeed) { StatsComp->SetDefaultSpeed(NewDefaultSpeed); };
 
 	// Server //
 
@@ -109,6 +122,8 @@ public:
 	UFUNCTION(Server, Reliable)
 	void Server_RequestRespawn();
 
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_SetDefaultSpeed(float NewDefaultSpeed);
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_Crouch();
 	UFUNCTION(NetMulticast, Reliable)
@@ -206,6 +221,9 @@ private:
 	// Level sequence //
 	UPROPERTY(EditAnywhere, Category="Camera sequence")
 	TObjectPtr<ULevelSequence> HuntCameraSequence;
+
+	UPROPERTY(Replicated)
+	bool bCanToggleFlashlight = true;
 
 
 	// Respawn //
