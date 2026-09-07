@@ -3,7 +3,7 @@
  * @brief Ghost stats 관련 component
  * 
  * **[Core functions]**
- * - InitializeGhostStats(): 입력된 값에 따른 기본 스탯 초기화
+ * - InitGhostStats(): 입력된 값에 따른 기본 스탯 초기화
  * 
  * **[Getter functions]**
  * - GetMoveSpeed() const: 이동 속도 반환
@@ -18,7 +18,6 @@
 #include "Components/ActorComponent.h"
 #include "GhostStatsComponent.generated.h"
 
-
 UCLASS( meta=(BlueprintSpawnableComponent) )
 class GOCLEAN_API UGhostStatsComponent : public UActorComponent
 {
@@ -26,44 +25,42 @@ class GOCLEAN_API UGhostStatsComponent : public UActorComponent
 
 	friend class AGhostBase;
 
-
 public:
-
 	UGhostStatsComponent();
 
 
 
 	// Init
-	void InitializeGhostStats(
-		float BaseMoveSpeed,
-		float BasePlayerDetectionRadius,
-		float BaseSoundDetectionRadius,
-		float BaseBehaviourFrequency)
-	{
-		MoveSpeed = BaseMoveSpeed;
-		PlayerDetectionRadius = BasePlayerDetectionRadius;
-		SoundDetectionRadius = BaseSoundDetectionRadius;
-		BehaviourFrequency = BaseBehaviourFrequency;
-	}
+	void InitGhostStats(float InBaseMovementSpeed,
+		float InRageMovementSpeed,
+		float InPlayerDetectionRange,
+		float InPlayerDetectionSightAngle,
+		float InRageCooldown,
+		int32 InRageModifier,
+		float InSoundDetectionRadius);
+
+	// Getter
+	float GetBaseMovementSpeed()		 const;
+	float GetRageMovementSpeed()         const;
+	float GetPlayerDetectionRange()      const;
+	float GetPlayerDetectionSightAngle() const;
+	float GetRageCooldown()				 const;
+	int32 GetRageModifier()				 const;
+	float GetSoundDetectionRadius()		 const;
 
 private:
-
-	//JSH Temp
 	UPROPERTY(EditAnywhere, Category = "Stats")
-	float MoveSpeed;
+	float BaseMovementSpeed;
 	UPROPERTY(EditAnywhere, Category = "Stats")
-	float PlayerDetectionRadius;
+	float RageMovementSpeed;
+	UPROPERTY(EditAnywhere, Category = "Stats")
+	float PlayerDetectionRange;
+	UPROPERTY(EditAnywhere, Category = "Stats")
+	float PlayerDetectionSightAngle;
+	UPROPERTY(EditAnywhere, Category = "Stats")
+	float RageCooldown;
+	UPROPERTY(EditAnywhere, Category = "Stats")
+	int32 RageModifier;
 	UPROPERTY(EditAnywhere, Category = "Stats")
 	float SoundDetectionRadius;
-	UPROPERTY(EditAnywhere, Category = "Stats")
-	float BehaviourFrequency;
-
-
-
-	
-	float GetMoveSpeed() const;
-	float GetPlayerDetectionRadius() const;
-	float GetSoundDetectionRadius() const;
-	float GetBehaviorFrequency() const;
-
 };

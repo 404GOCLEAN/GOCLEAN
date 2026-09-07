@@ -35,4 +35,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Logic")
     EGZoneType Type;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Logic")
+    EGZoneAttribute Attribute;
+
 };

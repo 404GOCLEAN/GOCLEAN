@@ -18,6 +18,7 @@
 #include "GTypes/DataTableRow/GObjectDataRow.h"
 
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 
 
 ////////////////////////////////////////////
@@ -76,6 +77,8 @@ void UGObjectManager::OnWorldBeginPlay(UWorld& InWorld)
     Super::OnWorldBeginPlay(InWorld);
 
     InitiateObjects();
+
+    InitializeWindowList();
 }
 
 
@@ -192,7 +195,7 @@ AGNonfixedObject* UGObjectManager::SpawnNonfixedObject(
 
         if (Data && GameState)
         {
-            GameState->AddSpiritualGauge(Data->Pollution);
+            //GameState->AddSpiritualGauge(Data->Pollution);
         }
     }
 
@@ -241,7 +244,7 @@ void UGObjectManager::InitiateObjects()
     if (GameState)
     {
         // 청소 90% 진행하면 청소 완료한 것으로 간주
-        GameState->ResetSpiritualAndRestGauge(InitialSpiritualGuage * 0.9f);
+        //GameState->ResetSpiritualAndRestGauge(InitialSpiritualGuage * 0.9f);
     }
 }
 
@@ -333,6 +336,7 @@ void UGObjectManager::OnDestoyed(AGNonfixedObject* DestroyedObj, const FGObjectD
     if (Data->Category == EGObjectCategory::E_Trash_B)
     {
         DestroyedObjs.Enqueue(DestroyedObj->GetNonfixedObjCoreComp()->IID);
+        DestroyedBigWasteIndices.Add(DestroyedObj->GetNonfixedObjCoreComp()->IID);
     }
     else
     {
@@ -849,4 +853,74 @@ void UGObjectManager::HandleUseItemOnObject(APlayerController* PC, int32 ItemId,
         GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan,
             FString::Printf(TEXT("[Server][OM] UseItem %d -> Target=%d"), ItemId, TargetInstanceId));
     }
+}
+
+
+
+// 단서 행동
+
+// LeaveFrost
+void UGObjectManager::InitializeWindowList()
+{
+    WindowList.Empty();
+
+    UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName("Window"), WindowList);
+
+    UE_LOG(LogTemp, Log, TEXT("[WINDOW] Found windows: %d"), WindowList.Num());
+}
+
+
+// SpillWaterBucket
+void UGObjectManager::RegisterBucketIndex(int32 IID)
+{
+    if (!NfixedObjects.Contains(IID)) return;
+
+    BucketIndices.Add(IID);
+
+    UE_LOG(LogTemp, Log, TEXT("[BUCKET] New bucket was spawned! : Instance ID - %d"), IID);
+}
+
+
+// RestoreWaste
+void UGObjectManager::RegisterDestroyedBigWasteIndex(int32 IID)
+{
+    if (!NfixedObjects.Contains(IID)) return;
+
+    DestroyedBigWasteIndices.Add(IID);
+
+    UE_LOG(LogTemp, Log, TEXT("[WASTE] New big waste was destroyed! : Instance ID - %d"), IID);
+}
+
+void UGObjectManager::RestoreBigWasteObject(int32 IID)
+{
+    AGNonfixedObject* Obj = GetNonfixedObject(IID);
+    if (!IsValid(Obj)) return;
+
+
+    // change the closest waste's state : static
+    Obj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Static);
+
+
+    // add spritual guage
+    auto* DataManager = GetWorld()->GetGameInstance()->GetSubsystem<UGDataManagerSubsystem>();
+    auto* Data = DataManager ? DataManager->GetObjectData(Obj->GetNonfixedObjCoreComp()->TID) : nullptr;
+
+    AGameSessionState* GameState = Cast<AGameSessionState>(GetWorld()->GetGameState());
+
+    if (Data && GameState)
+    {
+        // GameState->AddSpiritualGauge(Data->Pollution);
+    }
+}
+
+
+
+// legacy
+void UGObjectManager::RegisterWindow(AActor* WindowActor)
+{
+    if (!WindowActor) return;
+
+    WindowList.Add(WindowActor);
+
+    UE_LOG(LogGObject, Log, TEXT("[WINDOW] Window registered: %d"), WindowList.Num());
 }

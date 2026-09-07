@@ -88,7 +88,8 @@ void AGOCLEANCharacter::SetPlayerCurrentSanity(float NewPlayerCurrentSanity) {
 	if (StatsComp == nullptr) return;
 	StatsComp->SetCurrentSanity(NewPlayerCurrentSanity);
 }
-
+int32 AGOCLEANCharacter::GetPlayerCurrentLife() const { return StatsComp->GetCurrentLife(); }
+void AGOCLEANCharacter::DecreaseLife(int32 Amount) { StatsComp->DecreaseLife(Amount); };
 
 // Overrided //
 void AGOCLEANCharacter::Tick(float DeltaTime)
@@ -108,7 +109,28 @@ void AGOCLEANCharacter::Tick(float DeltaTime)
 		}
 	}
 
-	StatsComp->DecreaseCurrentSanity(StatsComp->GetSanityDrainRate() * DeltaTime);
+	StatsComp->DecreaseCurrentSanity(StatsComp->GetSanityDrainRate() * StatsComp->GetSanityDrainMultiplier() * DeltaTime);
+
+	// AimPitch adjustment
+	if (IsLocallyControlled())
+	{
+		float LocalAimPitch = FRotator::NormalizeAxis(GetControlRotation().Pitch);
+		LocalAimPitch = FMath::Clamp(LocalAimPitch, -60.f, 60.f);
+
+		if (FMath::Abs(LocalAimPitch - LastSentAimPitch) > 1.0f)
+		{
+			if (HasAuthority())
+			{
+				AimPitch = LocalAimPitch;
+			}
+			else
+			{
+				Server_SetAimPitch(LocalAimPitch);
+			}
+
+			LastSentAimPitch = LocalAimPitch;
+		}
+	}
 }
 
 void AGOCLEANCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -166,6 +188,8 @@ void AGOCLEANCharacter::TrySprintRelease()
 }
 void AGOCLEANCharacter::TryToggleFlashlight()
 {
+	if (!bCanToggleFlashlight) return;
+
 	Server_RequestToggleFlashlight();
 }
 void AGOCLEANCharacter::TryPlayerInteractionAnim()
@@ -187,6 +211,8 @@ void AGOCLEANCharacter::Server_RequestSprintRelease_Implementation()
 }
 void AGOCLEANCharacter::Server_RequestToggleFlashlight_Implementation()
 {
+	if (!bCanToggleFlashlight) return;
+
 	Multicast_ToggleFlashlight();
 }
 void AGOCLEANCharacter::Server_RequestPlayerInteractionAnim_Implementation()
@@ -220,6 +246,25 @@ void AGOCLEANCharacter::Multicast_PlayerInteractionAnim_Implementation()
 {
 	PlayerInteractionAnim();
 }
+void AGOCLEANCharacter::Multicast_SetDefaultSpeed_Implementation(float NewDefaultSpeed)
+{
+	if (StatsComp == nullptr) return;
+
+	StatsComp->SetDefaultSpeed(NewDefaultSpeed);
+
+	if (AnimState == EPlayerAnimState::Crouch)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetCrouchSpeed();
+	}
+	else if (bIsSprinting)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetSprintSpeed();
+	}
+	else
+	{
+		GetCharacterMovement()->MaxWalkSpeed = StatsComp->GetWalkSpeed();
+	}
+}
 void AGOCLEANCharacter::Multicast_Crouch_Implementation()
 {
 	Crouch();
@@ -241,7 +286,7 @@ void AGOCLEANCharacter::Multicast_SetVisible_Implementation(bool IsVisible)
 	ThirdPersonMeshComp->SetHiddenInGame(!IsVisible);
 }
 void AGOCLEANCharacter::Multicast_PlayHuntCameraSequence_Implementation()
-{
+{ 
 	PlayHuntCameraSequence();
 }
 void AGOCLEANCharacter::Multicast_Respawn_Implementation()
@@ -318,6 +363,7 @@ void AGOCLEANCharacter::Respawn()
 	SetActorLocationAndRotation(RespawnTransform.GetLocation(), RespawnTransform.GetRotation());
 
 	StatsComp->DecreaseLife(1);
+	if (GetPlayerCurrentLife() > 0) SetPlayerCurrentSanity(100.0f);
 	StatsComp->ResetStats();
 }
 
@@ -468,6 +514,9 @@ void AGOCLEANCharacter::RecoverStamina()
 void AGOCLEANCharacter::ToggleFlashlight()
 {
 	FlashlightComp->ToggleVisibility();
+
+	//JSH Tmp: Animation develop WIP
+	// PlayerInteractionAnim();
 }
 
 // Animation //
@@ -475,13 +524,14 @@ void AGOCLEANCharacter::PlayerInteractionAnim()
 {
 	if (FirstPersonAnimDataTable == nullptr || ThirdPersonManAnimDataTable == nullptr || ThirdPersonWomanAnimDataTable == nullptr) return;
 	
-	const FAnimationData* FirstPersonAnimRow = FirstPersonAnimDataTable->FindRow<FAnimationData>(FName(*FString::FromInt(GetAnimID())), TEXT(""));
+	//JSH TMP: Animation develop WIP | GetAnimID()->102
+	const FAnimationData* FirstPersonAnimRow = FirstPersonAnimDataTable->FindRow<FAnimationData>(FName(*FString::FromInt(102)), TEXT(""));
 
 	if (FirstPersonAnimRow == nullptr) return;
 
 	if (Gender == 0)
 	{
-		const FAnimationData* ThirdPersonAnimRow = ThirdPersonManAnimDataTable->FindRow<FAnimationData>(FName(*FString::FromInt(GetAnimID())), TEXT(""));
+		const FAnimationData* ThirdPersonAnimRow = ThirdPersonManAnimDataTable->FindRow<FAnimationData>(FName(*FString::FromInt(102)), TEXT(""));
 
 		if (FirstPersonAnimRow->Montage == nullptr || ThirdPersonAnimRow == nullptr) return;
 		FirstPersonMeshComp->GetAnimInstance()->Montage_Play(FirstPersonAnimRow->Montage);
@@ -489,7 +539,7 @@ void AGOCLEANCharacter::PlayerInteractionAnim()
 	}
 	else if (Gender == 1)
 	{
-		const FAnimationData* ThirdPersonAnimRow = ThirdPersonWomanAnimDataTable->FindRow<FAnimationData>(FName(*FString::FromInt(GetAnimID())), TEXT(""));
+		const FAnimationData* ThirdPersonAnimRow = ThirdPersonWomanAnimDataTable->FindRow<FAnimationData>(FName(*FString::FromInt(102)), TEXT(""));
 
 		if (FirstPersonAnimRow->Montage == nullptr || ThirdPersonAnimRow == nullptr) return;
 		FirstPersonMeshComp->GetAnimInstance()->Montage_Play(FirstPersonAnimRow->Montage);
@@ -552,6 +602,9 @@ void AGOCLEANCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AGOCLEANCharacter, AnimID);
 	DOREPLIFETIME(AGOCLEANCharacter, AnimState);
 	DOREPLIFETIME(AGOCLEANCharacter, StatsComp);
+
+	DOREPLIFETIME(AGOCLEANCharacter, AimPitch);
+	DOREPLIFETIME(AGOCLEANCharacter, bCanToggleFlashlight);
 }
 
 void AGOCLEANCharacter::SetHeldObject(AGNonfixedObject* NewObj)
@@ -663,4 +716,14 @@ void AGOCLEANCharacter::DropHeldObject(int32 Index)
 void AGOCLEANCharacter::OnRep_AnimID()
 {
 	PlayerInteractionAnim();
+}
+
+float AGOCLEANCharacter::GetAimPitch() const
+{
+	return AimPitch;
+}
+
+void AGOCLEANCharacter::Server_SetAimPitch_Implementation(float NewPitch)
+{
+	AimPitch = FMath::Clamp(NewPitch, -60.f, 60.f);
 }

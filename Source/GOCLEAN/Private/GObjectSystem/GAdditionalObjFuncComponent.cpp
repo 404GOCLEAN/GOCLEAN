@@ -520,6 +520,14 @@ UGBucketComponent::UGBucketComponent()
 void UGBucketComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	auto ObjManager = GetWorld()->GetSubsystem<UGObjectManager>();
+	AGNonfixedObject* Owner = Cast<AGNonfixedObject>(GetOwner());
+
+	if (Owner && Owner->GetNonfixedObjCoreComp() && ObjManager)
+	{
+		ObjManager->RegisterBucketIndex(Owner->GetNonfixedObjCoreComp()->IID);
+	}
 }
 
 void UGBucketComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -583,8 +591,6 @@ void UGBucketComponent::SpillFilth()
 			SpawnLocation,
 			SpawnRotation);
 	}
-
-	// 필요하다면 여기서 양동이의 상태를 'Empty'로 바꾸는 로직을 추가할 수 있습니다.
 }
 
 

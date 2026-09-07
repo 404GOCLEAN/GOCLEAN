@@ -261,7 +261,7 @@ void AGNonfixedObject::UpdatePhysicsByState()
 		GameState = Cast<AGameSessionState>(GetWorld()->GetGameState());
 		if (!GameState) break;
 
-		GameState->ApplySpiritualOrRestGauge(Data->Pollution);
+		//GameState->ApplySpiritualOrRestGauge(Data->Pollution);
 
 
 		// 대형 폐기물의 경우, Destroyed Queue에 삽입하여 귀신 단서 행동에서 사용할 수 있도록 함.

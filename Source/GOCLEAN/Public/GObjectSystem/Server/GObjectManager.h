@@ -176,6 +176,45 @@ public:
 
 
 
+	// 단서 행동
+private:
+	// LeaveFrost
+	UPROPERTY()
+	TArray<AActor*> WindowList;
+
+	void InitializeWindowList();
+
+
+	// SpillWaterBucket
+	TArray<int32> BucketIndices;
+
+
+	// RestoreWaste
+	TArray<int32> DestroyedBigWasteIndices;
+
+
+public:
+	// LeaveFrost
+	const TArray<AActor*> GetWindowList() { return WindowList; }
+
+	void RegisterWindow(AActor* WindowActor);
+
+
+	// SpillWaterBucket
+	void RegisterBucketIndex(int32 IID);
+
+	const TArray<int32> GetBucketIndices() { return BucketIndices; }
+
+
+	// RestoreWaste
+	void RegisterDestroyedBigWasteIndex(int32 IID);
+
+	const TArray<int32> GetDestroyedBigWasteIndices() { return DestroyedBigWasteIndices; }
+
+	void RestoreBigWasteObject(int32 IID);
+
+
+
 public:
 	// C -> S (서버 처리)
 

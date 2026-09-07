@@ -77,6 +77,8 @@ public:
 
 	float GetCurrentStamina() const;
 	float GetStaminaDrainRate() const;
+	void SetSanityDrainMultiplier(float NewSanityDrainMultiplier) { SanityDrainMultiplier = NewSanityDrainMultiplier; };
+	float GetSanityDrainMultiplier() const { return SanityDrainMultiplier; };
 	float GetStaminaRecoveryRate() const;
 	float GetStaminaRecoveryDelay() const;
 	float GetMaxStamina() const;
@@ -117,7 +119,8 @@ private:
 
 		MaxSanity = BaseMaxSanity;
 		CurrentSanity = MaxSanity;
-		SanityDrainRate = 10.0f;
+		SanityDrainRate = 0.18f;
+		SanityDrainMultiplier = 100.0f;
 
 		MaxStamina = BaseMaxStamina;
 		CurrentStamina = BaseMaxStamina;
@@ -144,6 +147,7 @@ private:
 	float MaxStamina;
 	float CurrentStamina;
 	float StaminaDrainRate;
+	float SanityDrainMultiplier;
 	float StaminaRecoveryRate;
 	float StaminaRecoveryDelay;
 

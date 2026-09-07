@@ -38,6 +38,8 @@ public:
 
 	const FGZoneData* GetZoneData(FName ZoneName) const;
 
+	const TArray<FGZoneData> GetZoneDatasByAttribute(EGZoneAttribute ZoneAttribute) const;
+
 	
 protected:
 	UPROPERTY()

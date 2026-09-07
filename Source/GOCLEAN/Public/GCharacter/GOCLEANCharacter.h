@@ -1,3 +1,5 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 /**
  * @class AGOCLEANCharacter
  * @brief Character stats component를 기반으로 하여, 유저의 입력에 기반한 플레이어 이동 처리
@@ -69,8 +71,11 @@ public:
 	UFUNCTION(BlueprintPure)
 	bool IsSprinting() const { return bIsSprinting; }
 
+	int32 GetPlayerCurrentLife() const;
+	void DecreaseLife(int32 Amount);
 	float GetPlayerCurrentSanity() const;
 	void SetPlayerCurrentSanity(float NewPlayerCurrentSanity);
+	void SetCanToggleFlashlight(bool bCanToggle) { bCanToggleFlashlight = bCanToggle; }
 
 	UPROPERTY(Replicated)
 	EPlayerAnimState AnimState;
@@ -79,6 +84,16 @@ public:
 
 	UFUNCTION(BlueprintPure)
 	EPlayerAnimState GetAnimState() { return AnimState; }
+
+	void SetSanityDrainMultiplier(float NewSanityDrainMultiplier)
+	{
+		if (StatsComp == nullptr) return;
+
+		StatsComp->SetSanityDrainMultiplier(NewSanityDrainMultiplier);
+	}
+
+	float GetDefaultSpeed() const { return StatsComp->GetWalkSpeed(); };
+	void SetDefaultSpeed(float NewDefaultSpeed) { StatsComp->SetDefaultSpeed(NewDefaultSpeed); };
 
 	// Server //
 
@@ -107,6 +122,8 @@ public:
 	UFUNCTION(Server, Reliable)
 	void Server_RequestRespawn();
 
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_SetDefaultSpeed(float NewDefaultSpeed);
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_Crouch();
 	UFUNCTION(NetMulticast, Reliable)
@@ -139,6 +156,16 @@ public:
 	void PlayHuntCameraSequence();
 
 	void SpawnDummyCharacter();
+
+protected:
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Animation|Aim")
+	float AimPitch = 0.f;
+
+	UFUNCTION(Server, Unreliable)
+	void Server_SetAimPitch(float NewPitch);
+
+	UFUNCTION(BlueprintPure, Category = "Animation|Aim")
+	float GetAimPitch() const;
 
 private:
 	// Components //
@@ -195,6 +222,9 @@ private:
 	UPROPERTY(EditAnywhere, Category="Camera sequence")
 	TObjectPtr<ULevelSequence> HuntCameraSequence;
 
+	UPROPERTY(Replicated)
+	bool bCanToggleFlashlight = true;
+
 
 	// Respawn //
 	UFUNCTION()
@@ -225,13 +255,13 @@ private:
 
 
 	// Animation //
-	UPROPERTY(EditDefaultsOnly, Category="Animation")
+	UPROPERTY(EditDefaultsOnly, Category="Animation|Gender")
 	bool Gender;
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, Category = "Animation|DataTable")
 	TObjectPtr<UDataTable> FirstPersonAnimDataTable;
-	UPROPERTY(EditDefaultsOnly, Category="Animation")
+	UPROPERTY(EditDefaultsOnly, Category="Animation|DataTable")
 	TObjectPtr<UDataTable> ThirdPersonManAnimDataTable;
-	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UPROPERTY(EditDefaultsOnly, Category = "Animation|DataTable")
 	TObjectPtr<UDataTable> ThirdPersonWomanAnimDataTable;
 
 	void PlayerInteractionAnim();
@@ -285,9 +315,7 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Input Actions")
 	TObjectPtr<UInputAction> InteractAction;
 
-
 public:
-
 	UGEquipmentComponent* GetEquipComp() const { return EquipComp; }
 	UInteractionComponent* GetInteractionComp() const { return InteractionComp; }
 
@@ -305,4 +333,7 @@ public:
 
 	void SetHeldObjectRelativeTransform(class AGNonfixedObject* NewObj);
 	
+
+private:
+	float LastSentAimPitch = 0.f;
 };
