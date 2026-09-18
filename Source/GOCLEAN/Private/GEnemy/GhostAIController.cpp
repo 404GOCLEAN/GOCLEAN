@@ -4,31 +4,31 @@
 
 
 // Getter //
-float AGhostAIController::GetPlayerSanityCorruptionRate() const { return PlayersSanityCorruptionRate; };
+//float AGhostAIController::GetPlayerSanityCorruptionRate() const { return PlayersSanityCorruptionRate; };
 
 // Server //
-void AGhostAIController::UpdatePlayerList()
+void AGhostAIController::UpdateAlivePlayerList()
 {
-	if (HasAuthority() == false) return;
+	if (!HasAuthority()) return;
 	
 	AlivePlayers.Empty();
 
-	AGameSessionState* SessionState = Cast<AGameSessionState>(GetWorld()->GetGameState());
-	if (SessionState == nullptr) return;
-
-	UE_LOG(LogTemp, Warning, TEXT("AlivePlayers Num: %d"), AlivePlayers.Num());
-	for (APlayerState* PS : SessionState->PlayerArray)
+	AGameSessionState* GSS = Cast<AGameSessionState>(GetWorld()->GetGameState());
+	if (GSS == nullptr) return;
+	
+	for (APlayerState* PS : GSS->PlayerArray)
 	{
-		int32 SeatIndex = SessionState->GetSeatIndexOfPlayerState(PS);
+		APlayerSessionState* PSS = Cast<APlayerSessionState>(PS);
+		if (PSS == nullptr) continue;
 
-		APawn* PlayerPawn = SessionState->GetPawnBySeat(SeatIndex);
-		if (PlayerPawn == nullptr) continue;
+		if (!PSS->IsAlive()) continue;
 
-		AGOCLEANCharacter* PlayerCharacter = Cast<AGOCLEANCharacter>(PlayerPawn);
+		AGOCLEANCharacter* PlayerCharacter = Cast<AGOCLEANCharacter>(PS->GetPawn());
 		if (PlayerCharacter == nullptr) continue;
 
 		AlivePlayers.Add(PlayerCharacter);
 	}
+	UE_LOG(LogTemp, Warning, TEXT("AlivePlayers Num: %d"), AlivePlayers.Num());
 }
 
 void AGhostAIController::FindTarget()
@@ -42,6 +42,7 @@ void AGhostAIController::FindTarget()
 
 float AGhostAIController::CalculateAverageSanityCorruptionRate()
 {
+	UpdateAlivePlayerList();
 	if (AlivePlayers.Num() == 0) return 0.f;
 
 	float TotalSanityCorruption = 0.f;
@@ -57,28 +58,59 @@ float AGhostAIController::CalculateAverageSanityCorruptionRate()
 	return (TotalSanityCorruption / AlivePlayers.Num());
 }
 
+void AGhostAIController::CalculateAveragePlayerSanity()
+{
+	UpdateAlivePlayerList();
+	if (AlivePlayers.Num() == 0) return;
+
+	int32 TotalPlayerSanity = 0;
+
+	for(AGOCLEANCharacter* PlayerCharacter : AlivePlayers)
+	{
+		if (PlayerCharacter == nullptr) continue;
+
+		TotalPlayerSanity += PlayerCharacter->GetPlayerCurrentSanity();
+	}
+
+	AveragePlayerSanity = static_cast<int>(TotalPlayerSanity / AlivePlayers.Num());
+}
+
+bool AGhostAIController::CheckBehaviorEventCondition()
+{
+	CalculateAveragePlayerSanity();
+	int32 EventValue = FMath::RandRange(0, MaxEventValueRange);
+	int32 BehaviorCheckValue = AveragePlayerSanity + ActivityLevel + ActivityLevelModifier;
+
+	if (BehaviorCheckValue <= 70 && EventValue == 15) return true;
+	else return false;
+}
+
+void AGhostAIController::InitActivityLevel()
+{
+	ActivityLevel = FMath::RandRange(0, 5);
+}
+
 // Overrided //
 void AGhostAIController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// JSH TMP
 	MoveToPatrolPoint();
 }
 
 void AGhostAIController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-	if(!bIsRageEvent) 
-		CheckRageEventCondition();
+	//UE_LOG(LogTemp, Warning, TEXT("AlivePlayers Num: %d"), AlivePlayers.Num());
+	/*if(!bIsRageEvent) 
+		CheckRageEventCondition();*/
 }
 
 void AGhostAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
-	GetWorld()->GetTimerManager().SetTimer(CheckPlayerSanityCorruptionHandle, this, &AGhostAIController::CheckPlayerSanityCorruptionRate, 5.0f, true);
+	//GetWorld()->GetTimerManager().SetTimer(CheckPlayerSanityCorruptionHandle, this, &AGhostAIController::CheckPlayerSanityCorruptionRate, 5.0f, true);
 
 	bIsRageEvent = false;
 	bIsChasing = false;
@@ -87,22 +119,27 @@ void AGhostAIController::OnPossess(APawn* InPawn)
 	ManifestRadius = 500.0f;
 	HuntRadius = 150.0f;
 	
-	UpdatePlayerList();
+	UpdateAlivePlayerList();
 
-	//MoveToPatrolPoint();
+	MaxEventValueRange = 100;
+	InitActivityLevel();
+	ActivityLevelModifier = 0;
+	bCanRageEvent = true;
+
+	GetWorld()->GetTimerManager().SetTimer(CheckRageEventConditionHandle, this, &AGhostAIController::CheckRageEventCondition, 10.0f, true);
 }
 
 
 // Check player sanity //
-void AGhostAIController::CheckPlayerSanityCorruptionRate()
-{
-	PlayersSanityCorruptionRate = CalculateAverageSanityCorruptionRate();
-	UpdatePlayerList();
-	// JSH Flag: Sanity
-	UE_LOG(LogTemp, Warning, TEXT("Player's current sanity corruption rate: %f"), (PlayersSanityCorruptionRate));
-
-	//PlayerSanityCorruptionRate = (100.0f - Player->GetPlayerCurrentSanity());
-}
+//void AGhostAIController::CheckPlayerSanityCorruptionRate()
+//{
+//	PlayersSanityCorruptionRate = CalculateAverageSanityCorruptionRate();
+//	UpdatePlayerList();
+//	// JSH Flag: Sanity
+//	UE_LOG(LogTemp, Warning, TEXT("Player's current sanity corruption rate: %f"), (PlayersSanityCorruptionRate));
+//
+//	//PlayerSanityCorruptionRate = (100.0f - Player->GetPlayerCurrentSanity());
+//}
 
 
 // State //
@@ -142,28 +179,71 @@ void AGhostAIController::CheckArrivalCurrentPatrolPoint()
 
 void AGhostAIController::CheckRageEventCondition()
 {
-	if (PlayersSanityCorruptionRate >= 1000 && !bIsRageEvent) {
-		Cast<AGhostBase>(GetPawn())->Multicast_PlayRageSound();
-		bIsRageEvent = true;
-		StartChase();
+	if (bIsRageEvent || bCanRageEvent == false || bIsUnendingRageEvent) return;
+
+	CalculateAveragePlayerSanity();
+	UE_LOG(LogTemp, Warning, TEXT("AveragePlayerSanity : %d"), AveragePlayerSanity);
+
+	if (AveragePlayerSanity >= 80) return;
+
+	if ((FMath::RandRange(0, 1) == 1))
+	{
+		AGhostBase* GhostCharacter = Cast<AGhostBase>(GetPawn());
+		if (GhostCharacter == nullptr) return;
+
+		const int32 Insanity = 100 - AveragePlayerSanity;
+		const int32 RageCheckValue = Insanity + GhostCharacter->GetRageModifier();
+
+		if (RageCheckValue >= 75)
+		{
+			if (FMath::RandRange(0, 2) == 1)
+			{
+				Cast<AGhostBase>(GetPawn())->Multicast_PlayRageSound();
+				bIsRageEvent = true;
+				bCanRageEvent = false;
+				StartChase();
+			}
+		}
+		else if ((40 <= RageCheckValue) && (RageCheckValue < 75))
+		{
+			if (FMath::RandRange(0, 4) == 1)
+			{
+				Cast<AGhostBase>(GetPawn())->Multicast_PlayRageSound();
+				bIsRageEvent = true;
+				bCanRageEvent = false;
+				StartChase();
+			}
+		}
+		else
+		{
+			return;
+		}
 	}
-	else return;
+
+	return;
 }
 
 void AGhostAIController::StartUnendingRageEvent()
 {
 	bIsUnendingRageEvent = true;
+
+	AGhostBase* GhostCharacter = Cast<AGhostBase>(GetPawn());
+	if (GhostCharacter == nullptr) return;
+
+	GhostCharacter->NotifyUnendingRageStarted();
+
 	StartChase();
 }
 
 void AGhostAIController::StartChase()
 {
-	UpdatePlayerList();
-	bIsChasing = true;
-	bIsPatrolling = false;
+	UpdateAlivePlayerList();
 
 	FindTarget();
 	if (TargetPlayer == nullptr) return;
+
+	bIsChasing = true;
+	bIsPatrolling = false;
 
 	ChasePlayer(TargetPlayer);
 }
@@ -178,8 +258,36 @@ void AGhostAIController::ChasePlayer(AActor* TargetPlayerCharacter)
 	else if(bIsUnendingRageEvent) GetWorld()->GetTimerManager().SetTimer(ChasingPlayerHandle, this, &AGhostAIController::EndlessPlayerHunt, 0.2f, true);
 }
 
+void AGhostAIController::EndRageEvent()
+{
+	AGhostBase* GhostCharacter = Cast<AGhostBase>(GetPawn());
+	if (GhostCharacter == nullptr) return;
+
+	bIsRageEvent = false;
+	bIsChasing = false;
+	bIsPatrolling = true;
+
+	GetWorld()->GetTimerManager().SetTimer(EnableRageEventTriggerHandle, this, &AGhostAIController::EnableRageTrigger, GhostCharacter->GetRageCooldown(), false);
+
+	MoveToPatrolPoint();
+}
+
 void AGhostAIController::PlayerHunt()
 {
+	if (TargetPlayer == nullptr)
+	{
+		EndRageEvent();
+		return;
+	}
+
+	APlayerSessionState* PSS = TargetPlayer->GetPlayerState<APlayerSessionState>();
+
+	if (PSS == nullptr)
+	{
+		EndRageEvent();
+		return;
+	}
+
 	if (!bIsRageEvent) return;
 
 	//UE_LOG(LogTemp, Warning, TEXT("Hunting Player"));
@@ -208,15 +316,8 @@ void AGhostAIController::PlayerHunt()
 		UE_LOG(LogTemp, Warning, TEXT("Player Hunted"));
 
 		GetWorld()->GetTimerManager().ClearTimer(ChasingPlayerHandle);
-		bIsRageEvent = false;
-		bIsChasing = false;
-		bIsPatrolling = true;
-		PlayersSanityCorruptionRate = 0;
-
-		// JSH Temp: Player sanity reset
-		TargetPlayer->SetPlayerCurrentSanity(100.0f);
-
-		MoveToPatrolPoint();
+		
+		EndRageEvent();
 	}
 }
 void AGhostAIController::Server_RequestPlayerHunt_Implementation()

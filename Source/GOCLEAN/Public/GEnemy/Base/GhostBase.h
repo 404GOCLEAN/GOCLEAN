@@ -18,12 +18,13 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/AudioComponent.h"
+#include "ServerModule/GameSession/PlayerSessionState.h"
 #include "GhostBase.generated.h"
 
-//JSH FLAH AGHOSTAIController -> Revision: AGhostAIController
 class AGhostAIController;
 class UCommonBehavior;
 class UEvidenceBehavior;
+class APlayerSessionState;
 
 UCLASS(Abstract)
 class GOCLEAN_API AGhostBase : public ACharacter
@@ -42,6 +43,7 @@ public:
 
 	int32 CurrentPatrolIndex;
 
+	TSubclassOf<AActor>GetManifestActorClass() { return ManifestActorClass; }
 	
 	// Sound //
 	UPROPERTY()
@@ -57,17 +59,33 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Audio")
 	TObjectPtr<USoundBase> OnHuntedCue;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Common Event|Audio")
+	TObjectPtr<USoundBase> CommonSound;
+	UPROPERTY(EditDefaultsOnly, Category = "Common Event|Audio")
+	TObjectPtr<USoundBase> FootstepSound;
+	UPROPERTY(EditDefaultsOnly, Category = "Common Event|Audio")
+	TObjectPtr<USoundAttenuation> CommonEventAttenuation;
+
+	int32 GetRageModifier();
+	float GetRageCooldown();
+
 	void PlayRageSound();
 	void StopRageSound();
 	void PlayChaseSound();
 	void StopChaseSound();
 
+	// Common Event
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayCommonEventSound();
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayFootstepSound();
+
 	// Rage
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayRageSound();
-
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_StopRageSound();
+	void NotifyUnendingRageStarted();
 
 	// Chase
 	UFUNCTION(NetMulticast, Reliable)
@@ -105,7 +123,7 @@ protected:
 	void Tick(float DeltaTime) override;
 
 	// Behavior event //
-	void CheckBehaviorEventCondition();
+	void EvaluateBehaviorEventCondition();
 	void PerformBehaviorEvent();
 
 
@@ -115,13 +133,26 @@ protected:
 	// Behavior event //
 	float BehaviorEventCycleDelay;
 	bool bCanSetBehaviourEventCycleTimer;
-	FTimerHandle GhostBehaviorCycleHandle;
+	FTimerHandle GhostBehaviorEventCycleHandle;
+
+	// Specific event //
+	virtual void OnUnendingRageStarted() {}
+	virtual void OnPlayerSanityHalfReached(APlayerSessionState* InPlayerState) {}
 
 private:
-
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USkeletalMeshComponent> MeshComp;
 
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<AGhostAIController> GhostAIController;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Common Event|Manifest")
+	TSubclassOf<AActor> ManifestActorClass;
+
+	UPROPERTY()
+	TSet<TObjectPtr<APlayerSessionState>> SanityHalfTriggeredPlayers;
+
+	void CheckPlayerSanityHalfReached();
+
+	FTimerHandle CheckPlayerSanityHalfReachedHandle;
 };

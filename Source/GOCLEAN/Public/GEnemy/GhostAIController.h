@@ -33,7 +33,7 @@ class GOCLEAN_API AGhostAIController : public AAIController
 public:
 
 	// Getter //
-	float GetPlayerSanityCorruptionRate() const;
+	//float GetPlayerSanityCorruptionRate() const;
 
 	UFUNCTION(BlueprintPure)
 	bool IsPatrolling() const { return bIsPatrolling; }
@@ -48,8 +48,9 @@ public:
 	UPROPERTY()
 	TObjectPtr<AGOCLEANCharacter> TargetPlayer;
 
-	void UpdatePlayerList();
+	void UpdateAlivePlayerList();
 	float CalculateAverageSanityCorruptionRate();
+	bool CheckBehaviorEventCondition();
 
 
 	// Server //
@@ -72,8 +73,10 @@ private:
 	void OnPossess(APawn* InPawn) override;
 
 
-	// Player sanity check //
-	void CheckPlayerSanityCorruptionRate();
+	// Behavior event //
+	//void CheckPlayerSanityCorruptionRate();
+	void CalculateAveragePlayerSanity();
+	void InitActivityLevel();
 
 
 	// State //
@@ -88,19 +91,15 @@ private:
 	void StartChase();
 	void ChasePlayer(AActor* TargetPlayerCharacter);
 
+	// Rage
+	void EnableRageTrigger() { bCanRageEvent = true; }
+	void EndRageEvent();
+
 	// Hunt
 	void PlayerHunt();
 	void EndlessPlayerHunt();
 
 	void FindTarget();
-	
-
-	// Check player sanity //
-	float PlayersSanityCorruptionRate;
-	FTimerHandle CheckPlayerSanityCorruptionHandle;
-
-
-	// State //
 
 public:
 	// Patrol
@@ -124,8 +123,24 @@ public:
 	void OnRep_IsChasing();
 
 private:
+	// Check player sanity //
+	//float PlayersSanityCorruptionRate;
+	//FTimerHandle CheckPlayerSanityCorruptionHandle;
+	float PlayerSaninty;
+	//FTimerHandle CheckPlayerSanityHandle;
+
+	// Rage
+	bool bCanRageEvent;
+	FTimerHandle CheckRageEventConditionHandle;
+	FTimerHandle EnableRageEventTriggerHandle;
+
 	// Hunt
 	float ManifestRadius;
 	float HuntRadius;
 
+	// Behavior event
+	int32 AveragePlayerSanity;
+	int32 ActivityLevel;
+	int32 MaxEventValueRange;
+	int32 ActivityLevelModifier;
 };
