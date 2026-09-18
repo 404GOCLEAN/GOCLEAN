@@ -1,9 +1,8 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "ServerModule/GameSession/LobbyGameState.h"
+#include "ServerModule/GameSession/PlayerSessionState.h"
 
 #include "Net/UnrealNetwork.h"
+
 
 ALobbyGameState::ALobbyGameState()
 {
@@ -11,25 +10,85 @@ ALobbyGameState::ALobbyGameState()
 }
 
 
-// ===============
+// ============================================================
 // Replication
-// ==============
+// ============================================================
 
-void ALobbyGameState::GetLifetimeReplicatedProps( TArray<FLifetimeProperty>& OutLifetimeProps ) const
+void ALobbyGameState::NotifyLobbyPlayersChanged()
 {
-    Super::GetLifetimeReplicatedProps( OutLifetimeProps );
+    if (!HasAuthority())
+        return;
 
-    DOREPLIFETIME( ALobbyGameState, SelectedContractId );
+    ++LobbyRosterRevision;
 
-    DOREPLIFETIME( ALobbyGameState, VendingItems );
+    // Listen Server Host는 RepNotify가 자동 호출되지 않으므로 직접 처리
+    OnRep_LobbyRosterRevision();
+}
+
+bool ALobbyGameState::AreAllPlayersReady() const
+{
+    int32 ValidPlayerCount = 0;
+
+    for (APlayerState* PlayerState : PlayerArray)
+    {
+        const APlayerSessionState* PSS =
+            Cast<APlayerSessionState>(PlayerState);
+
+        if (!IsValid(PSS))
+        {
+            continue;
+        }
+
+        ++ValidPlayerCount;
+
+        // 방장을 포함하여 한 명이라도 Ready가 아니면 시작 불가
+        if (!PSS->IsReady())
+        {
+            return false;
+        }
+    }
+
+    // 최소 한 명은 존재해야 함
+    // 방장 혼자 있어도 방장이 Ready라면 true
+    return ValidPlayerCount > 0;
 }
 
 
-// =================
-// Contract
-// =================
 
-void ALobbyGameState::SetSelectedContractId( int32 NewContractId )
+void ALobbyGameState::BeginPlay()
+{
+    Super::BeginPlay();
+
+    if (HasAuthority())
+    {
+        LobbyStartServerTime = GetServerWorldTimeSeconds();
+
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("Lobby started: %f"),
+            LobbyStartServerTime
+        );
+    }
+}
+
+
+void ALobbyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(ALobbyGameState, SelectedContractId);
+    DOREPLIFETIME(ALobbyGameState, PurchasedVendingItems);
+    DOREPLIFETIME(ALobbyGameState, LobbyRosterRevision);
+    DOREPLIFETIME(ALobbyGameState, LobbyStartServerTime);
+}
+
+
+// ============================================================
+// Contract
+// ============================================================
+
+void ALobbyGameState::SetSelectedContractId(int32 NewContractId)
 {
     if (!HasAuthority())
         return;
@@ -43,263 +102,211 @@ void ALobbyGameState::SetSelectedContractId( int32 NewContractId )
 }
 
 
-// =================
-// Find Vending
-// =================
+// ============================================================
+// Query
+// ============================================================
 
-FVendingItemState*
-ALobbyGameState::FindVendingItemMutable( int32 ItemId )
+bool ALobbyGameState::IsVendingItemPurchased(int32 ItemId) const
 {
-    return VendingItems.FindByPredicate(
-        [ItemId](const FVendingItemState& Item)
+    return PurchasedVendingItems.ContainsByPredicate(
+        [ItemId](const FVendingPurchaseState& Purchase)
         {
-            return Item.ItemId == ItemId;
+            return Purchase.ItemId == ItemId;
         }
     );
 }
 
 
-const FVendingItemState*
-ALobbyGameState::FindVendingItem( int32 ItemId ) const
+int32 ALobbyGameState::GetVendingBuyerSeatIndex(int32 ItemId) const
 {
-    return VendingItems.FindByPredicate( [ItemId](const FVendingItemState& Item)
+    const FVendingPurchaseState* Found =
+        PurchasedVendingItems.FindByPredicate(
+            [ItemId](const FVendingPurchaseState& Purchase)
+            {
+                return Purchase.ItemId == ItemId;
+            }
+        );
+
+    return Found ? Found->BuyerSeatIndex : INDEX_NONE;
+}
+
+
+bool ALobbyGameState::DidSeatPurchaseItem(int32 BuyerSeatIndex, int32 ItemId) const
+{
+    return PurchasedVendingItems.ContainsByPredicate(
+        [BuyerSeatIndex, ItemId](
+            const FVendingPurchaseState& Purchase
+            )
         {
-            return Item.ItemId == ItemId;
+            return
+                Purchase.ItemId == ItemId && Purchase.BuyerSeatIndex == BuyerSeatIndex;
         }
     );
 }
 
 
-// =======================
-// Vending State 조회
-// ========================
-
-bool ALobbyGameState::GetVendingItemState( int32 ItemId, FVendingItemState& OutState ) const
-{
-    const FVendingItemState* Item =
-        FindVendingItem(ItemId);
-
-    if (!Item)
-        return false;
-
-    OutState = *Item;
-
-    return true;
-}
-
-
-// ====================
-// 전체 구매 개수
-// ====================
-
-int32 ALobbyGameState::GetTotalPurchasedCount() const
-{
-    int32 TotalCount = 0;
-
-    for (const FVendingItemState& Item : VendingItems)
-    {
-        TotalCount += Item.BuyerSeatIndices.Num();
-    }
-
-    return TotalCount;
-}
-
-
-// ==================
-// 구매 가능 여부
-// ==================
-
-bool ALobbyGameState::CanPurchaseItem(int32 ItemId) const
-{
-    const FVendingItemState* Item = FindVendingItem(ItemId);
-
-    if (!Item)
-        return false;
-
-
-    // -1 = 무제한
-    if (Item->RemainingCount < 0)
-    {
-        return true;
-    }
-
-
-    return Item->RemainingCount > 0;
-}
-
-
-// ============
-// 구매
-// ===========
+// ============================================================
+// Purchase
+// ============================================================
 
 bool ALobbyGameState::AddVendingPurchase(int32 ItemId, int32 BuyerSeatIndex)
 {
     if (!HasAuthority())
         return false;
 
-    if (BuyerSeatIndex < 0)
+    if (ItemId < 0 || BuyerSeatIndex < 0)
+        return false;
+
+    // 같은 종류 중복 구매 금지
+    if (IsVendingItemPurchased(ItemId))
         return false;
 
 
-    FVendingItemState* Item = FindVendingItemMutable(ItemId);
+    FVendingPurchaseState NewPurchase;
 
-    if (!Item)
-        return false;
+    NewPurchase.ItemId = ItemId;
 
-
-    // 재고 없음
-    if (Item->RemainingCount == 0)
-        return false;
+    NewPurchase.BuyerSeatIndex = BuyerSeatIndex;
 
 
-    // 같은 플레이어의 같은 아이템 중복 구매 방지
-    if (Item->BuyerSeatIndices.Contains(BuyerSeatIndex))
-    {
-        return false;
-    }
+    PurchasedVendingItems.Add(NewPurchase);
 
-
-    // 구매자 추가
-    Item->BuyerSeatIndices.Add(BuyerSeatIndex);
-
-
-    // -1은 무제한이므로 감소하지 않음
-    if (Item->RemainingCount > 0)
-    {
-        Item->RemainingCount--;
-    }
-
-
-    OnRep_VendingItems();
+    OnRep_PurchasedVendingItems();
 
     return true;
 }
 
 
-// ==================
-// 구매 취소
-// ==================
+// ============================================================
+// Cancel
+// ============================================================
 
-bool ALobbyGameState::RemoveVendingPurchase( int32 ItemId, int32 BuyerSeatIndex )
+bool ALobbyGameState::RemoveVendingPurchase(int32 ItemId, int32 BuyerSeatIndex)
 {
     if (!HasAuthority())
         return false;
 
 
-    FVendingItemState* Item = FindVendingItemMutable(ItemId);
-
-    if (!Item)
-        return false;
-
-
-    const int32 RemovedCount = Item->BuyerSeatIndices.Remove(
-            BuyerSeatIndex
+    const int32 Removed = PurchasedVendingItems.RemoveAll(
+            [ItemId, BuyerSeatIndex]( const FVendingPurchaseState& Purchase )
+            {
+                return
+                    Purchase.ItemId == ItemId &&
+                    Purchase.BuyerSeatIndex == BuyerSeatIndex;
+            }
         );
 
 
-    if (RemovedCount <= 0)
+    if (Removed <= 0)
         return false;
 
 
-    // 무제한 아이템은 재고 복원 필요 없음
-    if (Item->RemainingCount >= 0)
-    {
-        Item->RemainingCount += RemovedCount;
-    }
-
-
-    OnRep_VendingItems();
+    OnRep_PurchasedVendingItems();
 
     return true;
 }
 
 
-// ===================================
-// 한 플레이어의 모든 구매 제거
-// ===================================
+// ============================================================
+// Remove All
+// ============================================================
 
-int32 ALobbyGameState::RemoveAllVendingPurchasesBySeat( int32 BuyerSeatIndex )
+int32 ALobbyGameState::RemoveAllVendingPurchasesBySeat(int32 BuyerSeatIndex)
 {
     if (!HasAuthority())
         return 0;
 
 
-    int32 TotalRemoved = 0;
+    const int32 Removed = PurchasedVendingItems.RemoveAll(
+            [BuyerSeatIndex]( const FVendingPurchaseState& Purchase)
+            {
+                return Purchase.BuyerSeatIndex == BuyerSeatIndex;
+            }
+        );
 
 
-    for (FVendingItemState& Item : VendingItems)
+    if (Removed > 0)
     {
-        const int32 RemovedCount = Item.BuyerSeatIndices.Remove( BuyerSeatIndex );
-
-
-        if (RemovedCount <= 0)
-            continue;
-
-
-        TotalRemoved += RemovedCount;
-
-
-        // 유한 재고만 복구
-        if (Item.RemainingCount >= 0)
-        {
-            Item.RemainingCount += RemovedCount;
-        }
+        OnRep_PurchasedVendingItems();
     }
 
 
-    if (TotalRemoved > 0)
-    {
-        OnRep_VendingItems();
-    }
-
-
-    return TotalRemoved;
+    return Removed;
 }
 
 
-// ====================
-// 벤딩 초기화
-// ====================
+// ============================================================
+// Clear
+// ============================================================
 
-void ALobbyGameState::InitializeVendingItems( const TArray<FVendingItemState>& InitialItems )
+void ALobbyGameState::ClearVendingPurchases()
 {
     if (!HasAuthority())
         return;
 
 
-    VendingItems = InitialItems;
-
-    OnRep_VendingItems();
-}
-
-
-void ALobbyGameState::ClearVendingItems()
-{
-    if (!HasAuthority())
+    if (PurchasedVendingItems.IsEmpty())
         return;
 
 
-    if (VendingItems.IsEmpty())
-        return;
+    PurchasedVendingItems.Reset();
 
-
-    VendingItems.Reset();
-
-    OnRep_VendingItems();
+    OnRep_PurchasedVendingItems();
 }
 
 
-// ========
-// OnRep
-// ========
+// ============================================================
+// RepNotify
+// ============================================================
 
 void ALobbyGameState::OnRep_SelectedContractId()
 {
-    BP_OnSelectedContractChanged( SelectedContractId );
+    BP_OnSelectedContractChanged(SelectedContractId);
 }
 
 
-void ALobbyGameState::OnRep_VendingItems()
+void ALobbyGameState::OnRep_PurchasedVendingItems()
 {
+    OnVendingItemsChanged.Broadcast();
+
     BP_OnVendingItemsChanged();
+}
+
+
+void ALobbyGameState::OnRep_LobbyRosterRevision()
+{
+    OnLobbyPlayersChanged.Broadcast();
+}
+
+
+// ============================================================
+// Lobby Time
+// ============================================================
+
+float ALobbyGameState::GetLobbyElapsedSeconds() const
+{
+    // -1일 때만 아직 시작 시간이 설정되지 않은 상태
+    if (LobbyStartServerTime < 0.f)
+        return 0.f;
+
+    return FMath::Max(
+        0.f,
+        GetServerWorldTimeSeconds() - LobbyStartServerTime
+    );
+}
+
+
+FString ALobbyGameState::GetLobbyElapsedTimeText() const
+{
+    const int32 TotalSeconds =
+        FMath::FloorToInt(GetLobbyElapsedSeconds());
+
+    const int32 Minutes = TotalSeconds / 60;
+    const int32 Seconds = TotalSeconds % 60;
+
+    return FString::Printf(
+        TEXT("%02d:%02d"),
+        Minutes,
+        Seconds
+    );
 }

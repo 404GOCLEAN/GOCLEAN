@@ -38,6 +38,8 @@ enum class EPlayerGender : uint8
 };
 
 
+
+
 /**
 * 로비 / 인게임에서 공통으로 유지되는 플레이어 상태
  *
@@ -56,6 +58,9 @@ enum class EPlayerGender : uint8
  * - Alive
  * - Escaped
  */
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLobbyPlayerInfoChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLobbyMoneyChanged, int32, NewMoney);
 
 UCLASS()
 class GOCLEAN_API APlayerSessionState : public APlayerState
@@ -166,6 +171,7 @@ public:
     void Server_SetLoadState(EPlayerLoadState NewState);
 
 
+
     // ========================
     // Server-only Setter
     // GameMode등의 서버로직에서 사용
@@ -191,6 +197,56 @@ public:
     void SetEscaped(bool bNewEscaped);
 
 
+    // ============================================================
+    // Lobby Money
+    // ============================================================
+
+    UFUNCTION(BlueprintPure, Category = "Player|Lobby")
+    int32 GetLobbyMoney() const
+    {
+        return LobbyMoney;
+    }
+
+    UPROPERTY(BlueprintAssignable, Category = "Player|Lobby|Money")
+    FOnLobbyMoneyChanged OnLobbyMoneyChanged;
+
+
+    // 서버 내부 사용
+    void SetLobbyMoney(int32 NewMoney);
+
+    bool SpendLobbyMoney(int32 Amount);
+
+    void RefundLobbyMoney(int32 Amount);
+
+
+    // ============================================================
+    // Vending Request
+    // ============================================================
+
+    UFUNCTION(BlueprintCallable, Category = "Player|Lobby|Vending")
+    void RequestPurchaseVendingItem(int32 ItemId);
+
+    UFUNCTION(Server, Reliable)
+    void Server_RequestPurchaseVendingItem(int32 ItemId);
+
+
+    UFUNCTION(BlueprintCallable, Category = "Player|Lobby|Vending")
+    void RequestCancelVendingItem(int32 ItemId);
+
+    UFUNCTION(Server, Reliable)
+    void Server_RequestCancelVendingItem(int32 ItemId);
+
+
+    UFUNCTION(BlueprintCallable, Category = "Player|Lobby")
+    void RequestStartLobbyGame();
+
+    UFUNCTION(Server, Reliable)
+    void Server_RequestStartLobbyGame();
+
+
+
+    UPROPERTY(BlueprintAssignable, Category = "Player|Lobby")
+    FOnLobbyPlayerInfoChanged OnLobbyPlayerInfoChanged;
 
 protected:
 
@@ -232,6 +288,12 @@ protected:
     UFUNCTION()
     void OnRep_LoadState();
 
+    UFUNCTION()
+    void OnRep_LobbyMoney();
+
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Player|Lobby")
+    void BP_OnLobbyMoneyChanged(int32 NewMoney);
 
     // ================
     // OnRep - InGame
@@ -242,6 +304,7 @@ protected:
 
     UFUNCTION()
     void OnRep_HasEscaped();
+
 
 
     // ============================================================
@@ -328,6 +391,11 @@ private:
     // 로딩 상태
     UPROPERTY(ReplicatedUsing = OnRep_LoadState, BlueprintReadOnly, Category = "Player|Load", meta = (AllowPrivateAccess = "true"))
     EPlayerLoadState LoadState = EPlayerLoadState::None;
+
+
+    // 임시 로비 재화
+    UPROPERTY(ReplicatedUsing = OnRep_LobbyMoney, BlueprintReadOnly, Category = "Player|Lobby", meta = (AllowPrivateAccess = "true"))
+    int32 LobbyMoney = 10000;
 
 
     // ============

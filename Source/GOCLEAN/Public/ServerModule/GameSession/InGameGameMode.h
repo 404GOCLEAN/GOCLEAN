@@ -8,6 +8,7 @@
 #include "InGameGameMode.generated.h"
 
 class APlayerSessionState;
+class UDataTable;
 
 /**
  * 
@@ -93,4 +94,11 @@ protected:
 private:
 
     bool bGameFinished = false;
+
+    // =================
+    // Vending
+    // =================
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Vending", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UDataTable> VendingItemDataTable;
 };

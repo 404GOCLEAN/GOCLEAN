@@ -7,6 +7,9 @@
 #include "GPlayerSystem/Server/GPlayerManager.h"
 #include "GMapSystem/Server/GMapManager.h"
 
+#include "Engine/DataTable.h"
+#include "ItemModule/Vending/VendingItemData.h"
+
 #include "Net/UnrealNetwork.h"
 
 void AInGameGameState::BeginPlay()
@@ -52,6 +55,8 @@ void AInGameGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
     DOREPLIFETIME(AInGameGameState, AliveSurvivorCount);
 
     DOREPLIFETIME(AInGameGameState, FinalRewardMoney);
+
+    DOREPLIFETIME(AInGameGameState, VendingStocks);
 }
 
 
@@ -247,6 +252,203 @@ void AInGameGameState::SetAliveSurvivorCount(int32 NewCount)
 }
 
 
+// =================
+// Vending
+// =================
+
+void AInGameGameState::InitializeVendingStock(const TArray<int32>& SelectedItemIds, UDataTable* VendingDataTable)
+{
+    if (!HasAuthority())
+        return;
+
+    VendingStocks.Reset();
+
+    if (!VendingDataTable)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] VendingItemDataTable is null.")
+        );
+
+        OnRep_VendingStocks();
+        return;
+    }
+
+
+    // 최대 5종
+    const int32 ItemCount = FMath::Min(SelectedItemIds.Num(), 5);
+
+
+    const TArray<FName> RowNames = VendingDataTable->GetRowNames();
+
+
+    for (int32 i = 0; i < ItemCount; ++i)
+    {
+        const int32 ItemId = SelectedItemIds[i];
+
+
+        const FVendingItemData* FoundData = nullptr;
+
+
+        for (const FName& RowName : RowNames)
+        {
+            const FVendingItemData* Row = VendingDataTable->FindRow<FVendingItemData>(
+                    RowName,
+                    TEXT("InitializeVendingStock")
+                );
+
+
+            if (Row && Row->VendingItemId == ItemId)
+            {
+                FoundData = Row;
+                break;
+            }
+        }
+
+
+        if (!FoundData)
+        {
+            UE_LOG(
+                LogTemp,
+                Warning,
+                TEXT("[Vending] ItemId %d not found in DT_VendingItem."),
+                ItemId
+            );
+
+            continue;
+        }
+
+
+        FInGameVendingStock NewStock;
+
+        NewStock.ItemId = ItemId;
+
+        NewStock.RemainingCount = FoundData->GrantedQuantity;
+
+
+        VendingStocks.Add(NewStock);
+
+
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] Initialized ItemId=%d, Count=%d"),
+            NewStock.ItemId,
+            NewStock.RemainingCount
+        );
+    }
+
+
+    // Listen Server에서도 즉시 이벤트 발생
+    OnRep_VendingStocks();
+}
+
+bool AInGameGameState::IsVendingItemAvailable(int32 ItemId) const
+{
+    return VendingStocks.ContainsByPredicate(
+        [ItemId](const FInGameVendingStock& Stock)
+        {
+            return Stock.ItemId == ItemId;
+        }
+    );
+}
+
+int32 AInGameGameState::GetVendingRemainingCount(int32 ItemId) const
+{
+    const FInGameVendingStock* Stock =
+        VendingStocks.FindByPredicate(
+            [ItemId](const FInGameVendingStock& Entry)
+            {
+                return Entry.ItemId == ItemId;
+            }
+        );
+
+
+    if (!Stock)
+        return 0;
+
+
+    return Stock->RemainingCount;
+}
+
+
+bool AInGameGameState::CanTakeVendingItem(int32 ItemId) const
+{
+    const FInGameVendingStock* Stock =
+        VendingStocks.FindByPredicate(
+            [ItemId](const FInGameVendingStock& Entry)
+            {
+                return Entry.ItemId == ItemId;
+            }
+        );
+
+
+    // 로비에서 선택되지 않은 아이템
+    if (!Stock)
+        return false;
+
+
+    // -1 = 무제한
+    if (Stock->RemainingCount < 0)
+        return true;
+
+
+    return Stock->RemainingCount > 0;
+}
+
+
+bool AInGameGameState::TryTakeVendingItem(int32 ItemId)
+{
+    if (!HasAuthority())
+        return false;
+
+
+    FInGameVendingStock* Stock =
+        VendingStocks.FindByPredicate(
+            [ItemId](const FInGameVendingStock& Entry)
+            {
+                return Entry.ItemId == ItemId;
+            }
+        );
+
+
+    if (!Stock)
+        return false;
+
+
+    // 무제한 아이템
+    if (Stock->RemainingCount < 0)
+    {
+        return true;
+    }
+
+
+    // 품절
+    if (Stock->RemainingCount <= 0)
+    {
+        return false;
+    }
+
+
+    --Stock->RemainingCount;
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Vending] ItemId=%d, RemainingCount=%d"),
+        ItemId,
+        Stock->RemainingCount
+    );
+
+
+    // Listen Server 즉시 갱신
+    OnRep_VendingStocks();
+
+
+    return true;
+}
+
 // ===========
 // Reward
 // ==========
@@ -327,4 +529,10 @@ void AInGameGameState::OnRep_AliveSurvivorCount()
 void AInGameGameState::OnRep_FinalRewardMoney()
 {
     BP_OnFinalRewardChanged(FinalRewardMoney);
+}
+
+
+void AInGameGameState::OnRep_VendingStocks()
+{
+    OnInGameVendingStockChanged.Broadcast();
 }
