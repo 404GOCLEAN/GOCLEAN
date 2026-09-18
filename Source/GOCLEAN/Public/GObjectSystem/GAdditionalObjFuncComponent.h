@@ -13,6 +13,7 @@
 
 class AGOCLEANCharacter;
 class AGNonfixedObject;
+class AGFixedObject;
 
 
 UCLASS(Abstract, Blueprintable)
@@ -194,6 +195,8 @@ protected:
 private:
 	FTimerHandle BurnTimerHandle;
 
+	AGFixedObject* Incinerator;
+
 	void OnBurnTimerFinished();
 
 	UPROPERTY(EditAnywhere, Category = "Burning")
@@ -267,22 +270,55 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	// 매 프레임 기울기를 체크하기 위해 Tick을 켭니다.
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	// 상호작용 트리거 (걸레 세척용)
 	virtual void OnInteractionTriggered(class AGOCLEANCharacter* Target) override;
 
+
+public:
+	void FillBucket(bool bAbPenomena = false);
+	void EmptyBucket();
+
 private:
-	// 엎어짐 체크 및 처리
+	// water
+	bool bHasWater = false;
+
+
+	// spill
 	void CheckSpill();
 	void SpillFilth();
 
 	UPROPERTY(EditAnywhere, Category = "Bucket")
 	float SpillThreshold = 0.7f; // UpVector.Z가 이보다 낮으면 엎어진 것으로 판단
 
-	UPROPERTY(EditAnywhere, Category = "Bucket")
-	FName FilthTID = "Obj_DerivedBlood"; // 엎어졌을 때 스폰할 Filth의 TID
+	bool bIsSpilled = false;
 
-	bool bIsSpilled = false; // 이미 엎어졌는지 확인 (중복 스폰 방지)
+
+	// pollution
+	void AddPollution(bool bAbPenomena = false);
+
+	UPROPERTY(EditAnywhere, Category = "Bucket")
+	float Pollution;
+
+	UPROPERTY(EditAnywhere, Category = "Bucket")
+	float InteractionPollution = 5.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Bucket")
+	float PollutionLV1 = 20.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Bucket")
+	float PollutionLV2 = 40.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Bucket")
+	float PollutionLV3 = 60.0f;
+
+
+	// derived filth
+	UPROPERTY(EditAnywhere, Category = "Bucket")
+	TMap<int32, FName> FilthTID = {
+		{1, "Obj_Blood1"},
+		{2, "Obj_Blood2"},
+		{3, "Obj_Blood3"}
+	};
+
 };

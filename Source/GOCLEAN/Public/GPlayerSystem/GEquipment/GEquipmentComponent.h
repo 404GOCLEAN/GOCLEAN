@@ -75,6 +75,8 @@ public:
 
 	AGNonfixedObject* GetHeldObject(int32 SlotIndex) const;
 
+	FName GetCurrentHeldObjectName() const;
+
 
 	bool SetCurrentHeldObject(AGNonfixedObject* NFixedObject);
 

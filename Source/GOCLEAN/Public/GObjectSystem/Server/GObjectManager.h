@@ -97,6 +97,9 @@ protected:
 	UPROPERTY()
 	TArray<TObjectPtr<AGFixedObject>> ExocismCircle;
 
+	UPROPERTY()
+	TObjectPtr<AGFixedObject> ActiveExocismCircle;
+
 	//		6. 물양동이 스포너
 	UPROPERTY()
 	TObjectPtr<AGFixedObject> BucketSpawner;
@@ -120,6 +123,24 @@ protected:
 	//		11. CCTV
 	UPROPERTY()
 	TObjectPtr<AGFixedObject> CCTV;
+
+
+
+
+	// fixed object
+public:
+	UFUNCTION()
+	void ActivateExocismCircle(AGFixedObject* DeactiveTarget);
+
+	UFUNCTION()
+	AGFixedObject* GetActiveExocismCircle()
+	{
+		return ActiveExocismCircle;
+	}
+
+	UFUNCTION()
+	AActor* GetActiveExocismCircleByActor();
+
 
 
 
