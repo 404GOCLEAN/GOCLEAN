@@ -398,6 +398,11 @@ AGNonfixedObject* UGObjectManager::SpawnNonfixedObjectAtPlayerSight(
 ////////////////////////////////////////////
 // Fixed Object
 ////////////////////////////////////////////
+AActor* UGObjectManager::GetActiveExocismCircleByActor()
+{
+    return ActiveExocismCircle;
+}
+
 void UGObjectManager::RegisterFixedObject(FName TID, AGFixedObject* Target)
 {
     if (TID == "Obj_Incinerator")
@@ -968,7 +973,7 @@ void UGObjectManager::ActivateExocismCircle(AGFixedObject* DeactiveTarget = null
     }
 
 
-    AGFixedObject* ActiveTarget;
+    AGFixedObject* ActiveTarget = nullptr;
 
     if (ExocismCircle.Num() == 1)
     {

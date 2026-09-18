@@ -130,7 +130,7 @@ protected:
 	// fixed object
 public:
 	UFUNCTION()
-	void ActivateExocismCircle(AGFixedObject* DeactiveTarget = nullptr);
+	void ActivateExocismCircle(AGFixedObject* DeactiveTarget);
 
 	UFUNCTION()
 	AGFixedObject* GetActiveExocismCircle()
@@ -139,10 +139,7 @@ public:
 	}
 
 	UFUNCTION()
-	AActor* GetActiveExocismCircleByActor()
-	{
-		return ActiveExocismCircle;
-	}
+	AActor* GetActiveExocismCircleByActor();
 
 
 
