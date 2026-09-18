@@ -52,13 +52,18 @@ void AInGameGameMode::InitializeGameState()
 
     if (GI)
     {
-        /*
-         * 기존 GameInstance 함수에 맞춰 연결
-         *
-         * IGS->SetSelectedContractId(
-         *     GI->GetPendingContractId()
-         * );
-         */
+        // =====================
+        // Contract
+        // =====================
+
+        IGS->SetSelectedContractId(GI->GetPendingContractId());
+
+
+        // =====================
+        // Vending
+        // =====================
+
+        IGS->InitializeVendingStock(GI->GetPendingVendingItemIds(), VendingItemDataTable);
     }
 
 

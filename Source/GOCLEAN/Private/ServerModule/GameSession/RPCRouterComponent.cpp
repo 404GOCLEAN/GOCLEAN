@@ -164,7 +164,7 @@ void URPCRouterComponent::Server_ObjectEvent_Implementation(
 
     case EObjectEvent_C2S::Vending_SelectItem:
 
-        OM->HandleVendingSelectItem(PC, Payload.ItemTypeId);
+        OM->HandleVendingSelectItem(PC, Payload.ParamInt);
 
         break;
 

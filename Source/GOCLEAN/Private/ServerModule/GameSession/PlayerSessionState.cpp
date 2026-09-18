@@ -32,6 +32,7 @@ void APlayerSessionState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
     // Lobby
     DOREPLIFETIME(APlayerSessionState, bIsReady);
     DOREPLIFETIME(APlayerSessionState, LoadState);
+    DOREPLIFETIME_CONDITION(APlayerSessionState, LobbyMoney, COND_OwnerOnly);
 
     // InGame
     DOREPLIFETIME(APlayerSessionState, bIsAlive);
@@ -248,6 +249,176 @@ void APlayerSessionState::SetEscaped( bool bNewEscaped )
     OnRep_HasEscaped();
 }
 
+void APlayerSessionState::SetLobbyMoney(int32 NewMoney)
+{
+    if (!HasAuthority())
+        return;
+
+    const int32 Clamped = FMath::Max(0, NewMoney);
+
+    if (LobbyMoney == Clamped)
+        return;
+
+    LobbyMoney = Clamped;
+
+    OnRep_LobbyMoney();
+}
+
+
+bool APlayerSessionState::SpendLobbyMoney(int32 Amount)
+{
+    if (!HasAuthority())
+        return false;
+
+    if (Amount < 0)
+        return false;
+
+    if (LobbyMoney < Amount)
+        return false;
+
+    SetLobbyMoney(LobbyMoney - Amount);
+
+    return true;
+}
+
+
+void APlayerSessionState::RefundLobbyMoney(int32 Amount)
+{
+    if (!HasAuthority())
+        return;
+
+    if (Amount <= 0)
+        return;
+
+    SetLobbyMoney(LobbyMoney + Amount);
+}
+
+// =========
+// 아이템 구매
+// =========
+void APlayerSessionState::RequestPurchaseVendingItem(int32 ItemId)
+{
+    if (HasAuthority())
+    {
+        if (ALobbyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ALobbyGameMode>() : nullptr)
+        {
+            APlayerController* PC = Cast<APlayerController>(GetOwner());
+
+            GM->RequestPurchaseVending(PC,ItemId);
+        }
+
+        return;
+    }
+
+
+    Server_RequestPurchaseVendingItem(ItemId);
+}
+
+
+void APlayerSessionState::Server_RequestPurchaseVendingItem_Implementation(int32 ItemId)
+{
+    ALobbyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ALobbyGameMode>() : nullptr;
+
+    if (!GM)
+        return;
+
+
+    APlayerController* PC = Cast<APlayerController>(GetOwner());
+
+    if (!PC)
+        return;
+
+
+    GM->RequestPurchaseVending(PC,ItemId);
+}
+
+// =========
+// 아이템 취소
+// =========
+
+void APlayerSessionState::RequestCancelVendingItem(int32 ItemId)
+{
+    if (HasAuthority())
+    {
+        if (ALobbyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ALobbyGameMode>() : nullptr)
+        {
+            APlayerController* PC = Cast<APlayerController>(GetOwner());
+
+            GM->RequestCancelVendingPurchase(PC, ItemId);
+        }
+
+        return;
+    }
+
+
+    Server_RequestCancelVendingItem(ItemId);
+}
+
+
+void APlayerSessionState::Server_RequestCancelVendingItem_Implementation(int32 ItemId)
+{
+    ALobbyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ALobbyGameMode>() : nullptr;
+
+    if (!GM)
+        return;
+
+
+    APlayerController* PC = Cast<APlayerController>(GetOwner());
+
+    if (!PC)
+        return;
+
+
+    GM->RequestCancelVendingPurchase(PC, ItemId);
+}
+
+void APlayerSessionState::OnRep_LobbyMoney()
+{
+    OnLobbyMoneyChanged.Broadcast(LobbyMoney);
+
+    BP_OnLobbyMoneyChanged(LobbyMoney);
+}
+
+
+// =========
+// 게임 시작
+// =========
+
+void APlayerSessionState::RequestStartLobbyGame()
+{
+    if (HasAuthority())
+    {
+        if (ALobbyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ALobbyGameMode>() : nullptr)
+        {
+            APlayerController* PC = Cast<APlayerController>(GetOwner());
+
+            GM->RequestStartGame(PC);
+        }
+
+        return;
+    }
+
+
+    Server_RequestStartLobbyGame();
+}
+
+
+void APlayerSessionState::Server_RequestStartLobbyGame_Implementation()
+{
+    ALobbyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ALobbyGameMode>() : nullptr;
+
+    if (!GM)
+        return;
+
+
+    APlayerController* PC = Cast<APlayerController>(GetOwner());
+
+    if (!PC)
+        return;
+
+
+    GM->RequestStartGame(PC);
+}
 
 // ===================
 // OnRep - Common
@@ -256,12 +427,16 @@ void APlayerSessionState::SetEscaped( bool bNewEscaped )
 void APlayerSessionState::OnRep_SeatIndex()
 {
     BP_OnSeatIndexChanged(SeatIndex);
+
+    OnLobbyPlayerInfoChanged.Broadcast();
 }
 
 
 void APlayerSessionState::OnRep_Nickname()
 {
     BP_OnNicknameChanged(Nickname);
+
+    OnLobbyPlayerInfoChanged.Broadcast();
 }
 
 
@@ -278,6 +453,8 @@ void APlayerSessionState::OnRep_IsHost()
 void APlayerSessionState::OnRep_CharacterType()
 {
     BP_OnCharacterTypeChanged(CharacterType);
+
+    OnLobbyPlayerInfoChanged.Broadcast();
 }
 
 
@@ -294,6 +471,8 @@ void APlayerSessionState::OnRep_Gender()
 void APlayerSessionState::OnRep_Ready()
 {
     BP_OnReadyChanged(bIsReady);
+
+    OnLobbyPlayerInfoChanged.Broadcast();
 }
 
 

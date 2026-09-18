@@ -234,7 +234,7 @@ public:
 	void HandleWaterTankStartFill(class APlayerController* PC, int32 WaterTankInstanceId);
 
 	// 벤딩머신 아이템 선택 요청 처리
-	void HandleVendingSelectItem(class APlayerController* PC, FName ItemTypeId);
+	void HandleVendingSelectItem(class APlayerController* PC, int32 ParamInt);
 
 	// 양동이로 물 쏟기 요청 처리
 	void HandleBucketPourWater(class APlayerController* PC, int32 BucketInstanceId);

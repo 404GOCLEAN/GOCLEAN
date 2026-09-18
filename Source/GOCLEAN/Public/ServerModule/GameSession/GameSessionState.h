@@ -61,4 +61,5 @@ public:
     // SeatIndex -> PlayerController
     // PlayerController는 서버에만 존재하는 정보가 있으므로 서버 전용으로 사용
     APlayerController* GetPlayerControllerBySeat( int32 SeatIndex ) const;
+
 };

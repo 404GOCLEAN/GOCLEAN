@@ -6,7 +6,9 @@
 #include "ServerModule/GameSession/LobbyGameState.h"
 #include "ServerModule/GameSession/GameSessionInstance.h"
 
+#include "Engine/TargetPoint.h"
 #include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
 
 ALobbyGameMode::ALobbyGameMode()
 {
@@ -27,6 +29,28 @@ void ALobbyGameMode::BeginPlay()
     Super::BeginPlay();
 
     InitializeCharacterOrder();
+
+    // ★ 임시 테스트용 계약 ID
+    if (HasAuthority())
+    {
+        if (ALobbyGameState* LGS =
+            GetLobbyGameState())
+        {
+            LGS->SetSelectedContractId(1);
+
+            UE_LOG(
+                LogTemp,
+                Warning,
+                TEXT("[Lobby] Test ContractId set to 1")
+            );
+        }
+    }
+
+    // 로비 월드와 TargetPoint가 모두 준비된 다음 검사
+    GetWorldTimerManager().SetTimerForNextTick(
+        this,
+        &ALobbyGameMode::EnsureAllLobbyCharactersSpawned
+    );
 }
 
 
@@ -36,23 +60,41 @@ void ALobbyGameMode::BeginPlay()
 
 void ALobbyGameMode::InitializeCharacterOrder()
 {
-    CharacterOrder.Reset();
+    // 이미 정상적으로 생성됐다면 다시 섞지 않음
+    if (CharacterOrder.Num() == 4)
+    {
+        return;
+    }
+
+    CharacterOrder.Empty();
 
     CharacterOrder.Add(EPlayerCharacterType::Character01);
-
     CharacterOrder.Add(EPlayerCharacterType::Character02);
-
     CharacterOrder.Add(EPlayerCharacterType::Character03);
-
     CharacterOrder.Add(EPlayerCharacterType::Character04);
 
-
-    for (int32 i = CharacterOrder.Num() - 1; i > 0; --i)
+    // Fisher-Yates 방식으로 순서 섞기
+    for (int32 Index = CharacterOrder.Num() - 1; Index > 0; --Index)
     {
-        const int32 SwapIndex = FMath::RandRange(0, i);
+        const int32 SwapIndex =
+            FMath::RandRange(0, Index);
 
-        CharacterOrder.Swap(i, SwapIndex);
+        CharacterOrder.Swap(Index, SwapIndex);
     }
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[LobbyAssign] CharacterOrder initialized: %s(%d), %s(%d), %s(%d), %s(%d)"),
+        *UEnum::GetValueAsString(CharacterOrder[0]),
+        static_cast<int32>(CharacterOrder[0]),
+        *UEnum::GetValueAsString(CharacterOrder[1]),
+        static_cast<int32>(CharacterOrder[1]),
+        *UEnum::GetValueAsString(CharacterOrder[2]),
+        static_cast<int32>(CharacterOrder[2]),
+        *UEnum::GetValueAsString(CharacterOrder[3]),
+        static_cast<int32>(CharacterOrder[3])
+    );
 }
 
 
@@ -83,16 +125,17 @@ void ALobbyGameMode::PostLogin(APlayerController* NewPlayer)
     InitializeLobbyPlayer(NewPlayer);
 
 
-    /*
-     * PlayerController 구현과 연결 필요
-     *
-     * AGOCLEANPlayerController* PC = Cast<AGOCLEANPlayerController>(NewPlayer);
-     *
-     * if (PC)
-     * {
-     *     PC->Client_ShowLobbyUI();
-     * }
-     */
+    // PlayerArray와 로비 월드 상태가 반영된 다음 검사
+    GetWorldTimerManager().SetTimerForNextTick(
+        this,
+        &ALobbyGameMode::EnsureAllLobbyCharactersSpawned
+    );
+
+    if (ALobbyGameState* LGS = GetLobbyGameState())
+    {
+        LGS->NotifyLobbyPlayersChanged();
+    }
+
 }
 
 
@@ -216,6 +259,233 @@ bool ALobbyGameMode::IsHost(const APlayerSessionState* PlayerState) const
     return PlayerState && PlayerState->IsHost();
 }
 
+const FVendingItemData* ALobbyGameMode::FindVendingItemData(int32 ItemId) const
+{
+    if (!VendingItemDataTable)
+        return nullptr;
+
+
+    const TArray<FName> RowNames = VendingItemDataTable->GetRowNames();
+
+
+    for (const FName& RowName : RowNames)
+    {
+        const FVendingItemData* Row = VendingItemDataTable->FindRow<FVendingItemData>(
+                RowName,
+                TEXT("FindVendingItemData")
+            );
+
+
+        if (!Row)
+            continue;
+
+
+        if (Row->VendingItemId == ItemId)
+        {
+            return Row;
+        }
+    }
+
+
+    return nullptr;
+}
+
+void ALobbyGameMode::EnsureAllLobbyCharactersSpawned()
+{
+    if (!HasAuthority())
+        return;
+
+    ALobbyGameState* LGS = GetLobbyGameState();
+
+    if (!LGS)
+        return;
+
+    for (APlayerState* PlayerState : LGS->PlayerArray)
+    {
+        APlayerSessionState* PSS =
+            Cast<APlayerSessionState>(PlayerState);
+
+        if (!PSS)
+            continue;
+
+        const int32 SeatIndex = PSS->GetSeatIndex();
+
+        if (SeatIndex < 0)
+            continue;
+
+        if (PSS->GetCharacterType() == EPlayerCharacterType::None)
+        {
+            UE_LOG(
+                LogTemp,
+                Warning,
+                TEXT("[LobbySpawn] CharacterType is None. Reassigning: Seat=%d"),
+                SeatIndex
+            );
+
+            AssignCharacter(PSS);
+        }
+
+        if (PSS->GetCharacterType() == EPlayerCharacterType::None)
+        {
+            UE_LOG(
+                LogTemp,
+                Error,
+                TEXT("[LobbySpawn] Reassignment failed: Seat=%d"),
+                SeatIndex
+            );
+
+            continue;
+        }
+
+        SpawnLobbyCharacter(PSS);
+
+        // 이미 해당 자리에 정상적인 캐릭터가 있으면 스폰하지 않음
+        if (TObjectPtr<AActor>* FoundCharacter =
+            SpawnedLobbyCharacters.Find(SeatIndex))
+        {
+            if (IsValid(FoundCharacter->Get()))
+            {
+                continue;
+            }
+
+            SpawnedLobbyCharacters.Remove(SeatIndex);
+        }
+
+        SpawnLobbyCharacter(PSS);
+    }
+}
+
+
+
+void ALobbyGameMode::SpawnLobbyCharacter(APlayerSessionState* PlayerState)
+{
+    if (!HasAuthority() || !PlayerState)
+        return;
+
+
+    const int32 SeatIndex = PlayerState->GetSeatIndex();
+
+    if (SeatIndex < 0) return;
+
+
+    // 해당 Seat에 기존 캐릭터가 있으면 제거
+    DestroyLobbyCharacter(SeatIndex);
+
+
+    const EPlayerCharacterType CharacterType = PlayerState->GetCharacterType();
+
+
+    const TSubclassOf<AActor> CharacterClass = GetLobbyCharacterClass(CharacterType);
+
+    if (!CharacterClass)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("Lobby Character Class is not assigned. CharacterType: %d"),
+            static_cast<int32>(CharacterType)
+        );
+
+        return;
+    }
+
+
+    AActor* SpawnPoint = FindLobbyCharacterSpawnPoint(SeatIndex);
+
+    if (!SpawnPoint)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("Lobby spawn point not found. SeatIndex: %d"),
+            SeatIndex
+        );
+
+        return;
+    }
+
+
+    FActorSpawnParameters SpawnParams;
+
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+
+    AActor* SpawnedCharacter =
+        GetWorld()->SpawnActor<AActor>(
+            CharacterClass,
+            SpawnPoint->GetActorTransform(),
+            SpawnParams
+        );
+
+
+    if (!SpawnedCharacter) return;
+
+
+    SpawnedLobbyCharacters.Add(SeatIndex, SpawnedCharacter);
+}
+
+
+
+void ALobbyGameMode::DestroyLobbyCharacter(int32 SeatIndex)
+{
+    TObjectPtr<AActor>* Found = SpawnedLobbyCharacters.Find(SeatIndex);
+
+    if (!Found) return;
+
+    AActor* Character = Found->Get();
+
+    if (IsValid(Character))
+    {
+        Character->Destroy();
+    }
+
+
+    SpawnedLobbyCharacters.Remove(SeatIndex);
+}
+
+AActor* ALobbyGameMode::FindLobbyCharacterSpawnPoint(int32 SeatIndex) const
+{
+    if (!GetWorld())
+        return nullptr;
+
+    const FName TargetTag( *FString::Printf( TEXT("LobbySeat%d"), SeatIndex ));
+
+    TArray<AActor*> TargetPoints;
+
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ATargetPoint::StaticClass(), TargetPoints);
+
+    for (AActor* Target : TargetPoints)
+    {
+        if (Target && Target->ActorHasTag(TargetTag))
+        {
+            return Target;
+        }
+    }
+
+    return nullptr;
+}
+
+TSubclassOf<AActor> ALobbyGameMode::GetLobbyCharacterClass(EPlayerCharacterType CharacterType) const
+{
+    switch (CharacterType)
+    {
+    case EPlayerCharacterType::Character01:
+        return Character01LobbyClass;
+
+    case EPlayerCharacterType::Character02:
+        return Character02LobbyClass;
+
+    case EPlayerCharacterType::Character03:
+        return Character03LobbyClass;
+
+    case EPlayerCharacterType::Character04:
+        return Character04LobbyClass;
+
+    default:
+        return nullptr;
+    }
+}
+
 
 // =============
 // Character
@@ -223,24 +493,59 @@ bool ALobbyGameMode::IsHost(const APlayerSessionState* PlayerState) const
 
 void ALobbyGameMode::AssignCharacter(APlayerSessionState* PlayerState)
 {
-    if (!PlayerState)
+    if (!HasAuthority() || !PlayerState)
         return;
 
+    const int32 SeatIndex = PlayerState->GetSeatIndex();
 
-    const int32 Seat = PlayerState->GetSeatIndex();
-
-
-    if (!CharacterOrder.IsValidIndex(Seat))
+    if (SeatIndex < 0)
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("[LobbyAssign] Failed: Invalid SeatIndex=%d"),
+            SeatIndex
+        );
         return;
+    }
 
+    // 호스트 PostLogin이 BeginPlay보다 먼저 실행되는 경우 대비
+    if (CharacterOrder.Num() == 0)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[LobbyAssign] CharacterOrder is empty. Initializing now.")
+        );
 
-    const EPlayerCharacterType Character = CharacterOrder[Seat];
+        InitializeCharacterOrder();
+    }
 
+    if (!CharacterOrder.IsValidIndex(SeatIndex))
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("[LobbyAssign] Failed: Invalid CharacterOrder index. Seat=%d, Count=%d"),
+            SeatIndex,
+            CharacterOrder.Num()
+        );
+        return;
+    }
 
-    PlayerState->SetCharacterType(Character);
+    const EPlayerCharacterType AssignedType = CharacterOrder[SeatIndex];
 
+    PlayerState->SetCharacterType(AssignedType);
 
-    PlayerState->SetGender(GetGenderForCharacter(Character));
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[LobbyAssign] Success: Player=%s, Seat=%d, Type=%s(%d)"),
+        *GetNameSafe(PlayerState),
+        SeatIndex,
+        *UEnum::GetValueAsString(AssignedType),
+        static_cast<int32>(AssignedType)
+    );
 }
 
 
@@ -333,15 +638,22 @@ bool ALobbyGameMode::AreAllPlayersReady() const
         ++PlayerCount;
 
 
-        // Host는 Ready가 필요 없음
-        
-        if (PSS->IsHost())
-            continue;
-
+        // 방장을 포함해 한 명이라도 Ready가 아니면 시작 불가
         if (!PSS->IsReady())
         {
             return false;
         }
+
+
+        //// Host는 Ready가 필요 없음
+        //
+        //if (PSS->IsHost())
+        //    continue;
+
+        //if (!PSS->IsReady())
+        //{
+        //    return false;
+        //}
     }
 
 
@@ -353,34 +665,125 @@ bool ALobbyGameMode::AreAllPlayersReady() const
 // Start Condition
 // =======================
 
+//bool ALobbyGameMode::CanStartGame() const
+//{
+//    if (bGameStarting)
+//        return false;
+//
+//
+//    if (GetSessionPlayerCount() < MinPlayersToStart)
+//        return false;
+//
+//
+//    if (!AreAllPlayersReady())
+//        return false;
+//
+//
+//    const ALobbyGameState* LGS =
+//        GetGameState<ALobbyGameState>();
+//
+//    if (!LGS)
+//        return false;
+//
+//
+//    if (LGS->GetSelectedContractId() <= 0)
+//        return false;
+//
+//
+//    return true;
+//}
+
+
 bool ALobbyGameMode::CanStartGame() const
 {
     if (bGameStarting)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[CanStartGame] Failed: Game already starting")
+        );
+
         return false;
+    }
 
 
-    if (GetSessionPlayerCount() < MinPlayersToStart)
+    const int32 PlayerCount =
+        GetSessionPlayerCount();
+
+    if (PlayerCount < MinPlayersToStart)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT(
+                "[CanStartGame] Failed: PlayerCount=%d, Min=%d"
+            ),
+            PlayerCount,
+            MinPlayersToStart
+        );
+
         return false;
+    }
 
 
     if (!AreAllPlayersReady())
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[CanStartGame] Failed: Not all players ready")
+        );
+
         return false;
+    }
 
 
     const ALobbyGameState* LGS =
         GetGameState<ALobbyGameState>();
 
     if (!LGS)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[CanStartGame] Failed: LobbyGameState is null")
+        );
+
         return false;
+    }
 
 
-    if (LGS->GetSelectedContractId() <= 0)
+    const int32 ContractId =
+        LGS->GetSelectedContractId();
+
+    if (ContractId <= 0)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT(
+                "[CanStartGame] Failed: SelectedContractId=%d"
+            ),
+            ContractId
+        );
+
         return false;
+    }
 
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT(
+            "[CanStartGame] Success: Players=%d, Contract=%d"
+        ),
+        PlayerCount,
+        ContractId
+    );
 
     return true;
 }
-
 
 // ================
 // Contract
@@ -435,12 +838,13 @@ bool ALobbyGameMode::RequestPurchaseVending(APlayerController* Buyer, int32 Item
         return false;
 
 
-    // Ready 이후 구매 불가
-    if (PSS->IsReady())
+    // 게임 시작 중
+    if (bGameStarting)
         return false;
 
 
-    if (bGameStarting)
+    // Ready 이후 구매 금지
+    if (PSS->IsReady())
         return false;
 
 
@@ -450,26 +854,56 @@ bool ALobbyGameMode::RequestPurchaseVending(APlayerController* Buyer, int32 Item
         return false;
 
 
-    // 전체 최대 5개
-    if (LGS->GetTotalPurchasedCount() >= MaxVendingPurchaseCount)
+    // 최대 5종
+    if (LGS->GetPurchasedVendingCount() >= MaxVendingPurchaseCount)
     {
         return false;
     }
 
 
-    // 해당 아이템 재고 확인
-    if (!LGS->CanPurchaseItem(ItemId))
+    // 해당 종류 이미 구매됨
+    if (LGS->IsVendingItemPurchased(ItemId))
+    {
+        return false;
+    }
+
+
+    // DataTable
+    const FVendingItemData* ItemData = FindVendingItemData(ItemId);
+
+    if (!ItemData)
         return false;
 
 
-    /*
-     * TODO: 플레이어 재화 확인
-     *
-     * TODO: 실제 재화 차감
-     */
+    if (!ItemData->bAvailableInVending)
+        return false;
 
 
-    return LGS->AddVendingPurchase(ItemId, PSS->GetSeatIndex());
+    // 재화 부족
+    if (PSS->GetLobbyMoney() < ItemData->Price)
+    {
+        return false;
+    }
+
+
+    // 먼저 돈 차감
+    if (!PSS->SpendLobbyMoney(ItemData->Price))
+    {
+        return false;
+    }
+
+
+    // 구매 상태 등록
+    if (!LGS->AddVendingPurchase(ItemId, PSS->GetSeatIndex()))
+    {
+        // 실패했다면 환불
+        PSS->RefundLobbyMoney(ItemData->Price);
+
+        return false;
+    }
+
+
+    return true;
 }
 
 
@@ -489,11 +923,11 @@ bool ALobbyGameMode::RequestCancelVendingPurchase(APlayerController* Buyer, int3
         return false;
 
 
-    if (PSS->IsReady())
+    if (bGameStarting)
         return false;
 
 
-    if (bGameStarting)
+    if (PSS->IsReady())
         return false;
 
 
@@ -503,18 +937,30 @@ bool ALobbyGameMode::RequestCancelVendingPurchase(APlayerController* Buyer, int3
         return false;
 
 
-    const bool bRemoved = LGS->RemoveVendingPurchase(ItemId, PSS->GetSeatIndex());
-
-
-    if (bRemoved)
+    // 본인이 구매한 것만 취소 가능
+    if (!LGS->DidSeatPurchaseItem(PSS->GetSeatIndex(), ItemId))
     {
-        /*
-         * TODO: 구매 취소 시 재화 반환
-         */
+        return false;
     }
 
 
-    return bRemoved;
+    const FVendingItemData* ItemData = FindVendingItemData(ItemId);
+
+    if (!ItemData)
+        return false;
+
+
+    if (!LGS->RemoveVendingPurchase(ItemId, PSS->GetSeatIndex()))
+    {
+        return false;
+    }
+
+
+    // 환불
+    PSS->RefundLobbyMoney(ItemData->Price);
+
+
+    return true;
 }
 
 
@@ -524,16 +970,23 @@ bool ALobbyGameMode::RequestCancelVendingPurchase(APlayerController* Buyer, int3
 
 bool ALobbyGameMode::RequestStartGame(APlayerController* Requester)
 {
+    // 서버에서만 처리
+    if (!HasAuthority())
+        return false;
+
+
     if (!Requester)
         return false;
 
 
     APlayerSessionState* PSS = GetPlayerSessionState(Requester);
 
+    // 방장만 시작 가능
     if (!IsHost(PSS))
         return false;
 
 
+    // 인원, Ready, 계약 선택 여부 검사
     if (!CanStartGame())
         return false;
 
@@ -550,21 +1003,86 @@ bool ALobbyGameMode::RequestStartGame(APlayerController* Requester)
         return false;
 
 
+    if (GameMapPath.IsEmpty())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("[Lobby] GameMapPath is empty.")
+        );
+
+        return false;
+    }
+
+
     bGameStarting = true;
 
 
     // ===================
-    // 선택 의뢰 확정
+    // 선택 계약 보존
     // ===================
-
-    const int32 ContractId = LGS->GetSelectedContractId();
 
     GI->SetPendingContractId(LGS->GetSelectedContractId());
 
 
+    // ==========================
+    // 선택 벤딩 아이템 보존
+    // ==========================
+
+    TArray<int32> SelectedVendingItemIds;
+
+    for (const FVendingPurchaseState& Purchase :
+        LGS->GetPurchasedVendingItems())
+    {
+        if (Purchase.ItemId != INDEX_NONE)
+        {
+            SelectedVendingItemIds.Add(Purchase.ItemId);
+        }
+    }
+
+
+    if (SelectedVendingItemIds.Num() > MaxVendingPurchaseCount)
+    {
+        SelectedVendingItemIds.SetNum(MaxVendingPurchaseCount);
+    }
+
+
+    GI->SetPendingVendingItemIds(
+        SelectedVendingItemIds
+    );
+
+
+    // ==========================
+    // 모든 플레이어 인게임 이동
+    // ==========================
+
+    const FString TravelURL = GameMapPath + TEXT("?listen");
+
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Lobby] ServerTravel: %s"),
+        *TravelURL
+    );
+
+
+    if (!GetWorld()->ServerTravel(TravelURL))
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("[Lobby] ServerTravel failed.")
+        );
+
+        bGameStarting = false;
+
+        return false;
+    }
+
+
     return true;
 }
-
 
 // =============
 // Logout
@@ -586,6 +1104,7 @@ void ALobbyGameMode::Logout(AController* Exiting)
     {
         const int32 LeavingSeat = PSS->GetSeatIndex();
 
+        DestroyLobbyCharacter(LeavingSeat);
 
         ALobbyGameState* LGS = GetLobbyGameState();
 
@@ -617,6 +1136,12 @@ void ALobbyGameMode::Logout(AController* Exiting)
 
 
     Super::Logout(Exiting);
+
+    // 제거가 끝난 후 로비 UI 갱신
+    if (ALobbyGameState* LGS = GetLobbyGameState())
+    {
+        LGS->NotifyLobbyPlayersChanged();
+    }
 }
 
 
