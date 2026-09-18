@@ -140,6 +140,6 @@ public:
 
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UBoxComponent> InteractionVolume;
+	TObjectPtr<class UShapeComponent> InteractionVolume;
 
 };

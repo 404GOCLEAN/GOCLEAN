@@ -226,7 +226,7 @@ void UGRemovingComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 			SetVisualByInteractionCnt(Owner, EquipComp, *Data);
 
 			// 물걸레의 오염도를 증가
-			// EquipComp->AddMopPollution(20.0f);
+			EquipComp->AddMopPollution(20.0f);
 		}
 		else
 		{
@@ -592,7 +592,7 @@ void UGBucketComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 }
 
 // water
-void UGBucketComponent::FillBucket(bool bAbPenomena = false)
+void UGBucketComponent::FillBucket(bool bAbPenomena)
 {
 	bHasWater = true;
 
@@ -662,7 +662,7 @@ void UGBucketComponent::SpillFilth()
 }
 
 // pollution
-void UGBucketComponent::AddPollution(bool bAbPenomena = false)
+void UGBucketComponent::AddPollution(bool bAbPenomena)
 {
 	float AddValue = bAbPenomena ? PollutionLV3 : InteractionPollution;
 	Pollution += AddValue;

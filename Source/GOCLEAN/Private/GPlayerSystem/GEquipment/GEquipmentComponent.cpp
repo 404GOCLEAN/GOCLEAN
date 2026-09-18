@@ -152,6 +152,19 @@ bool UGEquipmentComponent::SetCurrentHeldObject(AGNonfixedObject* NFixedObject)
 	return ChangeHeldObject(CurrentSlotIndex, NFixedObject);
 }
 
+FName UGEquipmentComponent::GetCurrentHeldObjectName() const
+{
+	FName Name = "";
+
+	auto Target = GetHeldObject(CurrentSlotIndex);
+	if (IsValid(Target))
+	{
+		Name = Target->GetNonfixedObjCoreComp()->TID;
+	}
+
+	return Name;
+}
+
 
 AGNonfixedObject* UGEquipmentComponent::GetHeldObject(int32 SlotIndex) const
 {
