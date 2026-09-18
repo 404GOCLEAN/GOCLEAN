@@ -16,6 +16,7 @@
 
 #include "ServerModule/GameSession/GameSessionState.h"
 #include "GTypes/DataTableRow/GObjectDataRow.h"
+#include "ServerModule/GameSession/InGameGameState.h"
 
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
@@ -734,11 +735,78 @@ void UGObjectManager::HandleWaterTankStartFill(APlayerController* PC, int32 Wate
     //  물 담기 시작 (서버에서 판정 후 완료 시 S2C 알림 필요)
 }
 
-void UGObjectManager::HandleVendingSelectItem(APlayerController* PC, FName ItemTypeId)
+void UGObjectManager::HandleVendingSelectItem(APlayerController* PC, int32 ItemId)
 {
-    UE_LOG(LogTemp, Log, TEXT("[C2S] Vending_SelectItem by %s, ItemType=%s"), PC ? *PC->GetName() : TEXT("NULL"), *ItemTypeId.ToString());
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Vending] HandleVendingSelectItem START ItemId=%d"),
+        ItemId
+    );
 
-    // 선택 카운트/스폰 조건 처리
+    if (!PC)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] FAILED: PC is null")
+        );
+        return;
+    }
+
+    UWorld* World = GetWorld();
+
+    if (!World)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] FAILED: World is null")
+        );
+        return;
+    }
+
+    AInGameGameState* GS = World->GetGameState<AInGameGameState>();
+
+    if (!GS)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] FAILED: InGameGameState is null")
+        );
+        return;
+    }
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Vending] Before Take ItemId=%d Count=%d"),
+        ItemId,
+        GS->GetVendingRemainingCount(ItemId)
+    );
+
+    const bool bSuccess =
+        GS->TryTakeVendingItem(ItemId);
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Vending] After Take ItemId=%d Count=%d Success=%s"),
+        ItemId,
+        GS->GetVendingRemainingCount(ItemId),
+        bSuccess ? TEXT("true") : TEXT("false")
+    );
+
+    if (!bSuccess)
+    {
+        return;
+    }
+
+    // ========================================
+    // TODO:
+    // 실제 아이템 Spawn / 지급
+    // ========================================
 }
 
 void UGObjectManager::HandleBucketPourWater(APlayerController* PC, int32 BucketInstanceId)

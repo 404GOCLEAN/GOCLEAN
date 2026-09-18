@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "ServerModule/GameSession/GameSessionMode.h"
 #include "ServerModule/GameSession/PlayerSessionState.h"
+#include "ItemModule/Vending/VendingItemData.h"
 #include "LobbyGameMode.generated.h"
 
 class ALobbyGameState;
@@ -76,6 +77,7 @@ public:
     // Start
     // ===============
 
+    UFUNCTION(BlueprintCallable, Category = "Lobby|Game")
     bool RequestStartGame(APlayerController* Requester);
 
 
@@ -125,6 +127,24 @@ protected:
 
     bool IsHost(const APlayerSessionState* PlayerState) const;
 
+    const FVendingItemData* FindVendingItemData(int32 ItemId) const;
+
+
+    // =============================
+    // Lobby Character Display
+    // =============================
+
+    // 현재 접속해 있지만 로비 캐릭터가 없는 플레이어를 확인하고 스폰
+    void EnsureAllLobbyCharactersSpawned();
+
+    void SpawnLobbyCharacter(APlayerSessionState* PlayerState);
+
+    void DestroyLobbyCharacter(int32 SeatIndex);
+
+    AActor* FindLobbyCharacterSpawnPoint(int32 SeatIndex) const;
+
+    TSubclassOf<AActor> GetLobbyCharacterClass(EPlayerCharacterType CharacterType) const;
+
 
 private:
 
@@ -137,6 +157,10 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Lobby")
     int32 MinPlayersToStart = 1;
 
+    // 인게임 맵 경로
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Travel")
+    FString GameMapPath = TEXT("/Game/FirstPerson/Maps/FirstPersonMap");
+
 
     // 벤딩 전체 구매 가능 개수
     UPROPERTY(EditDefaultsOnly, Category = "Lobby|Vending")
@@ -145,6 +169,32 @@ private:
 
     // SeatIndex와 대응되는 캐릭터 배정 순서
     TArray<EPlayerCharacterType> CharacterOrder;
+
+    // 벤딩 아이템 기본 데이터
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Lobby|Vending", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UDataTable> VendingItemDataTable;
+
+
+
+    // =============================
+    // Lobby Character Classes
+    // =============================
+
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Character")
+    TSubclassOf<AActor> Character01LobbyClass;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Character")
+    TSubclassOf<AActor> Character02LobbyClass;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Character")
+    TSubclassOf<AActor> Character03LobbyClass;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Character")
+    TSubclassOf<AActor> Character04LobbyClass;
+
+    UPROPERTY()
+    TMap<int32, TObjectPtr<AActor>> SpawnedLobbyCharacters;
+
 
 
     bool bGameStarting = false;

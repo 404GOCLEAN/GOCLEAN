@@ -80,7 +80,8 @@ public:
 
 	void ChangeSlot(int32 SlotIndex);
 
-
+	UFUNCTION(BlueprintCallable, Category = "Vending")
+	void RequestTakeVendingItem(int32 ItemId);
 
 public:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")

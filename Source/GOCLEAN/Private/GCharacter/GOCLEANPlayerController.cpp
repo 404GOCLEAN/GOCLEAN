@@ -117,6 +117,20 @@ void AGOCLEANPlayerController::ChangeSlot(int32 SlotIndex)
     RPCRouter->Server_PlayerEvent(EPlayerEvent_C2S::RequestChangeCurrentSlotIndex, Temp);
 }
 
+void AGOCLEANPlayerController::RequestTakeVendingItem(int32 ItemId)
+{
+    if (!RPCRouter)
+        return;
+
+    FObjectPayload_C2S Payload;
+    Payload.ParamInt = ItemId;
+
+    RPCRouter->Server_ObjectEvent(
+        EObjectEvent_C2S::Vending_SelectItem,
+        Payload
+    );
+}
+
 
 
 

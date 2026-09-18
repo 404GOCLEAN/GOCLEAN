@@ -9,32 +9,21 @@
 
 // 벤딩 아이템 상태
 USTRUCT(BlueprintType)
-struct FVendingItemState
+struct FVendingPurchaseState
 {
     GENERATED_BODY()
 
-
-    // 아이템 ID
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Vending" )
+    UPROPERTY(BlueprintReadOnly, Category = "Vending")
     int32 ItemId = INDEX_NONE;
 
-
-    // 남은 구매 가능 개수
-    //
-    // -1 = 무제한
-    //  0 = 품절
-    //  1 이상 = 남은 재고
-    UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "Vending" )
-    int32 RemainingCount = 0;
-
-
-    // 해당 아이템을 구매한 플레이어 Seat
-    //
-    // 예: [0, 2] -> 1P / 3P가 구매
-    UPROPERTY( BlueprintReadOnly, Category = "Vending" )
-    TArray<int32> BuyerSeatIndices;
+    // 0~3
+    // 0 = 1P, 1 = 2P ...
+    UPROPERTY(BlueprintReadOnly, Category = "Vending")
+    int32 BuyerSeatIndex = INDEX_NONE;
 };
 
+// 벤딩 구매 정보가 변경되었을 때
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnVendingItemsChanged);
 
 /**
  * 로비에서 모든 플레이어가 공유하는 상태
@@ -45,6 +34,7 @@ struct FVendingItemState
  * - 구매자
  */
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLobbyPlayersChanged);
 UCLASS()
 class GOCLEAN_API ALobbyGameState : public AGameSessionState
 {
@@ -70,54 +60,106 @@ public:
     void SetSelectedContractId( int32 NewContractId );
 
 
-    // =========
-    // Vending
-    // =========
+    // ============================================================
+    // Vending - Blueprint Getter
+    // ============================================================
 
     UFUNCTION(BlueprintPure, Category = "Lobby|Vending")
-    const TArray<FVendingItemState>& GetVendingItems() const
+    const TArray<FVendingPurchaseState>& GetPurchasedVendingItems() const
     {
-        return VendingItems;
+        return PurchasedVendingItems;
     }
 
 
-    // 특정 아이템 조회
-    UFUNCTION(BlueprintCallable, Category = "Lobby|Vending")
-    bool GetVendingItemState(int32 ItemId, FVendingItemState& OutState) const;
-
-
-    // 현재 전체 구매 개수
+    // 현재 구매된 종류 수 (최대 5)
     UFUNCTION(BlueprintPure, Category = "Lobby|Vending")
-    int32 GetTotalPurchasedCount() const;
+    int32 GetPurchasedVendingCount() const
+    {
+        return PurchasedVendingItems.Num();
+    }
 
 
-    // 해당 아이템 구매 가능 여부
+    // 해당 아이템이 이미 구매되었는지
     UFUNCTION(BlueprintPure, Category = "Lobby|Vending")
-    bool CanPurchaseItem(int32 ItemId) const;
+    bool IsVendingItemPurchased(int32 ItemId) const;
 
 
-    // 서버에서 구매 반영
-    bool AddVendingPurchase(int32 ItemId, int32 BuyerSeatIndex);
+    // 해당 아이템을 구매한 SeatIndex
+    // 구매되지 않았다면 INDEX_NONE
+    UFUNCTION(BlueprintPure, Category = "Lobby|Vending")
+    int32 GetVendingBuyerSeatIndex(int32 ItemId) const;
 
 
-    // 구매 취소
-    bool RemoveVendingPurchase(int32 ItemId, int32 BuyerSeatIndex);
+    // 특정 Seat가 구매한 아이템인지
+    UFUNCTION(BlueprintPure, Category = "Lobby|Vending")
+    bool DidSeatPurchaseItem(
+        int32 BuyerSeatIndex,
+        int32 ItemId
+    ) const;
 
 
-    // 특정 플레이어가 구매한 모든 아이템 제거
+    // ============================================================
+    // Server Only
+    // ============================================================
+
+    bool AddVendingPurchase(
+        int32 ItemId,
+        int32 BuyerSeatIndex
+    );
+
+
+    bool RemoveVendingPurchase(
+        int32 ItemId,
+        int32 BuyerSeatIndex
+    );
+
+
     // Logout 시 사용
-    int32 RemoveAllVendingPurchasesBySeat(int32 BuyerSeatIndex);
+    int32 RemoveAllVendingPurchasesBySeat(
+        int32 BuyerSeatIndex
+    );
 
 
-    // 초기 벤딩 아이템 설정
-    void InitializeVendingItems( const TArray<FVendingItemState>& InitialItems );
+    void ClearVendingPurchases();
 
 
-    // 전체 초기화
-    void ClearVendingItems();
+    // ============================================================
+    // Vending Event
+    // ============================================================
 
+    // PurchasedVendingItems가 변경되면 호출.
+    // Lobby Widget에서 Bind해서 UI를 갱신한다.
+    UPROPERTY(BlueprintAssignable, Category = "Lobby|Vending")
+    FOnVendingItemsChanged OnVendingItemsChanged;
+
+
+    // ============================================================
+    // Lobby Player
+    // ============================================================
+
+    UPROPERTY(BlueprintAssignable, Category = "Lobby|Player")
+    FOnLobbyPlayersChanged OnLobbyPlayersChanged;
+
+    // GameMode에서 플레이어 입장/퇴장 처리가 모두 끝난 뒤 호출
+    void NotifyLobbyPlayersChanged();
+
+    // 현재 로비에 있는 모든 플레이어가 Ready인지 검사
+    UFUNCTION(BlueprintPure, Category = "Lobby|Player")
+    bool AreAllPlayersReady() const;
+
+    // ============================================================
+    // Lobby Time
+    // ============================================================
+
+    UFUNCTION(BlueprintPure, Category = "Lobby|Time")
+    float GetLobbyElapsedSeconds() const;
+
+    UFUNCTION(BlueprintPure, Category = "Lobby|Time")
+    FString GetLobbyElapsedTimeText() const;
 
 protected:
+
+    virtual void BeginPlay() override;
 
     virtual void GetLifetimeReplicatedProps( TArray<FLifetimeProperty>& OutLifetimeProps ) const override;
 
@@ -130,7 +172,11 @@ protected:
     void OnRep_SelectedContractId();
 
     UFUNCTION()
-    void OnRep_VendingItems();
+    void OnRep_PurchasedVendingItems();
+
+
+    UFUNCTION()
+    void OnRep_LobbyRosterRevision();
 
 
     // =================
@@ -147,13 +193,6 @@ protected:
 
 private:
 
-    FVendingItemState* FindVendingItemMutable(int32 ItemId );
-
-    const FVendingItemState* FindVendingItem(int32 ItemId ) const;
-
-
-private:
-
     // ==============
     // Contract
     // ===============
@@ -166,6 +205,18 @@ private:
     // Vending
     // ==========
 
-    UPROPERTY( ReplicatedUsing = OnRep_VendingItems, BlueprintReadOnly, Category = "Lobby|Vending", meta = (AllowPrivateAccess = "true"))
-    TArray<FVendingItemState> VendingItems;
+    UPROPERTY(ReplicatedUsing = OnRep_PurchasedVendingItems, BlueprintReadOnly, Category = "Lobby|Vending",
+        meta = (AllowPrivateAccess = "true"))
+    TArray<FVendingPurchaseState> PurchasedVendingItems;
+
+
+
+    // 플레이어 목록 변경을 클라이언트에게 알리기 위한 Revision
+    UPROPERTY(ReplicatedUsing = OnRep_LobbyRosterRevision)
+    int32 LobbyRosterRevision = 0;
+
+
+    // 서버 기준 로비 시작 시간
+    UPROPERTY(Replicated)
+    float LobbyStartServerTime = -1.f;
 };

@@ -41,7 +41,7 @@ public:
     // ================
 
     // Client -> Server
-    UFUNCTION(Server, Reliable)
+    UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RPC|Object")
     void Server_ObjectEvent(EObjectEvent_C2S EventType, const FObjectPayload_C2S& Payload);
 
 
@@ -69,7 +69,7 @@ public:
     // ====================
 
     // Client -> Server
-    UFUNCTION(Server, Reliable)
+    UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RPC|Cleaning")
     void Server_CleaningEvent(ECleaningEvent_C2S EventType, const FCleaningPayload_C2S& Payload);
 
 

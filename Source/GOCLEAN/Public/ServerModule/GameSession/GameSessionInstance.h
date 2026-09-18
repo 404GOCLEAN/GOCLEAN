@@ -113,5 +113,71 @@ private:
     TMap<int32, TPair<FVector, float>> VoiceStimuliMap;
 
 
+public:
+
+    // ==========================
+    // Join Code
+    // ==========================
+
+    /**
+     * 지정된 자릿수의 숫자 JoinCode 생성
+     *
+     * 예: 6자리 -> "083271"
+     */
+
+    UFUNCTION(BlueprintCallable, Category = "Session|JoinCode")
+    FString GenerateJoinCode(int32 DigitCount = 6);
+
+
+    /**
+     * JoinCode 형식 검증
+     *
+     * 현재는 숫자로만 구성된 지정 길이 코드인지 검사
+     */
+    UFUNCTION(BlueprintPure, Category = "Session|JoinCode")
+    bool IsValidJoinCode(const FString& JoinCode, int32 ExpectedDigitCount = 6) const;
+
+
+    UFUNCTION(BlueprintCallable, Category = "Session|JoinCode")
+    void ClearPendingJoinCode();
+
+
+    UFUNCTION(BlueprintPure, Category = "Session|JoinCode")
+    bool HasPendingJoinCode() const
+    {
+        return !PendingJoinCode.IsEmpty();
+    }
+
+
+    // ============================================================
+    // Lobby Vending -> InGame
+    // ============================================================
+
+    // 로비에서 최종 선택된 벤딩 아이템 저장
+    UFUNCTION(BlueprintCallable, Category = "Session|Vending")
+    void SetPendingVendingItemIds(const TArray<int32>& ItemIds)
+    {
+        PendingVendingItemIds = ItemIds;
+    }
+
+
+    // 인게임에서 가져오기
+    UFUNCTION(BlueprintPure, Category = "Session|Vending")
+    const TArray<int32>& GetPendingVendingItemIds() const
+    {
+        return PendingVendingItemIds;
+    }
+
+
+    UFUNCTION(BlueprintCallable, Category = "Session|Vending")
+    void ClearPendingVendingItemIds()
+    {
+        PendingVendingItemIds.Reset();
+    }
+
+private:
+    // 로비에서 선택된 최대 5종의 VendingItemId
+    UPROPERTY()
+    TArray<int32> PendingVendingItemIds;
 
 };
