@@ -39,6 +39,80 @@ void APlayerSessionState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
     DOREPLIFETIME(APlayerSessionState, bHasEscaped);
 }
 
+void APlayerSessionState::CopyProperties(APlayerState* PlayerState)
+{
+    Super::CopyProperties(PlayerState);
+
+    APlayerSessionState* NewPSS = Cast<APlayerSessionState>(PlayerState);
+
+    if (!NewPSS)
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT(
+                "[PlayerState] "
+                "CopyProperties cast failed: %s"
+            ),
+            *GetNameSafe(PlayerState)
+        );
+
+        return;
+    }
+
+
+
+    // 로비에서 인게임까지 유지할 공통 정보
+    NewPSS->SeatIndex = SeatIndex;
+    NewPSS->Nickname = Nickname;
+    NewPSS->bIsHost = bIsHost;
+    NewPSS->CharacterType = CharacterType;
+    NewPSS->Gender = Gender;
+
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT(
+            "[PlayerState] CopyProperties: "
+            "Seat=%d, CharacterType=%d"
+        ),
+        SeatIndex,
+        static_cast<int32>(CharacterType)
+    );
+}
+
+void APlayerSessionState::OverrideWith(APlayerState* PlayerState)
+{
+    Super::OverrideWith(PlayerState);
+
+    const APlayerSessionState* OldPSS = Cast<APlayerSessionState>(PlayerState);
+
+    if (!OldPSS)
+    {
+        return;
+    }
+
+
+    SeatIndex = OldPSS->SeatIndex;
+    Nickname = OldPSS->Nickname;
+    bIsHost = OldPSS->bIsHost;
+    CharacterType = OldPSS->CharacterType;
+    Gender = OldPSS->Gender;
+
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT(
+            "[PlayerState] OverrideWith: "
+            "Seat=%d, CharacterType=%d"
+        ),
+        SeatIndex,
+        static_cast<int32>(CharacterType)
+    );
+}
+
 
 // ===============
 // Ready Request

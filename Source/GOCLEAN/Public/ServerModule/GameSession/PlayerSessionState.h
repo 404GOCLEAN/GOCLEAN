@@ -252,6 +252,9 @@ protected:
 
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+    virtual void CopyProperties(APlayerState* PlayerState) override;
+
+    virtual void OverrideWith(APlayerState* PlayerState) override;
 
     // ==================
     // OnRep - Common
@@ -307,7 +310,7 @@ protected:
 
 
 
-    // ============================================================
+   // ============================================================
    // Blueprint Events
    //
    // UI / Character BP에서 상태 변경을 바로 받을 수 있게 사용

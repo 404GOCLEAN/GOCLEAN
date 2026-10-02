@@ -463,3 +463,115 @@ AInGameGameState* AInGameGameMode::GetInGameState() const
 {
     return GetGameState<AInGameGameState>();
 }
+
+
+UClass* AInGameGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
+{
+
+    if (!IsValid(InController))
+    {
+        return Super::GetDefaultPawnClassForController_Implementation(InController);
+    }
+
+
+    const APlayerSessionState* PSS = InController->GetPlayerState<APlayerSessionState>();
+
+
+    if (!IsValid(PSS))
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT(
+                "[InGameSpawn] " 
+                "PlayerSessionState is null"
+            )
+        );
+
+        return Super::GetDefaultPawnClassForController_Implementation(InController);
+    }
+
+
+    const EPlayerCharacterType CharacterType = PSS->GetCharacterType();
+
+
+    TSubclassOf<APawn> PawnClass;
+
+
+    switch (CharacterType)
+    {
+    case EPlayerCharacterType::Character01:
+
+        PawnClass = Character01PawnClass;
+        break;
+
+
+    case EPlayerCharacterType::Character02:
+
+        PawnClass = Character02PawnClass;
+        break;
+
+
+    case EPlayerCharacterType::Character03:
+
+        PawnClass = Character03PawnClass;
+        break;
+
+
+    case EPlayerCharacterType::Character04:
+
+        PawnClass = Character04PawnClass;
+        break;
+
+
+    default:
+
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT(
+                "[InGameSpawn] "
+                "CharacterType is None or invalid. "
+                "Player=%s, Seat=%d, Type=%d"
+            ),
+            *PSS->GetPlayerName(),
+            PSS->GetSeatIndex(),
+            static_cast<int32>(CharacterType)
+        );
+
+        return Super::GetDefaultPawnClassForController_Implementation(InController);
+    }
+
+
+    if (!PawnClass)
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT(
+                "[InGameSpawn] "
+                "Pawn class is not assigned. Type=%d"
+            ),
+            static_cast<int32>(CharacterType)
+        );
+
+        return Super::GetDefaultPawnClassForController_Implementation(InController);
+    }
+
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT(
+            "[InGameSpawn] "
+            "Player=%s, Seat=%d, Type=%d, Class=%s"
+        ),
+        *PSS->GetPlayerName(),
+        PSS->GetSeatIndex(),
+        static_cast<int32>(CharacterType),
+        *GetNameSafe(PawnClass.Get())
+    );
+
+
+    return PawnClass.Get();
+}
