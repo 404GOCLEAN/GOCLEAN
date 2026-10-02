@@ -91,6 +91,8 @@ protected:
     AInGameGameState* GetInGameState() const;
 
 
+    virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
+
 private:
 
     bool bGameFinished = false;
@@ -101,4 +103,24 @@ private:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Vending", meta = (AllowPrivateAccess = "true"))
     TObjectPtr<UDataTable> VendingItemDataTable;
+
+
+    // =================
+    // Player Character
+    // =================
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character01PawnClass;
+
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character02PawnClass;
+
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character03PawnClass;
+
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character04PawnClass;
 };
