@@ -7,12 +7,15 @@
 #include "GObjectSystem/GNonfixedObject.h"
 #include "GObjectSystem/GNonfixedObjCoreComponent.h"
 #include "GObjectSystem/GFixedObject.h"
+#include "GObjectSystem/GExocismComponent.h"
 
 #include "GCharacter/GOCLEANCharacter.h"
 #include "GPlayerSystem/InteractionComponent.h"
 #include "GPlayerSystem/GEquipment/GEquipmentComponent.h"
 #include "GDataManagerSubsystem.h"
 #include "GTypes/IGInteractable.h"
+
+#include "GMapSystem/Server/GMapManager.h"
 
 #include "ServerModule/GameSession/GameSessionState.h"
 #include "GTypes/DataTableRow/GObjectDataRow.h"
@@ -396,6 +399,11 @@ AGNonfixedObject* UGObjectManager::SpawnNonfixedObjectAtPlayerSight(
 ////////////////////////////////////////////
 // Fixed Object
 ////////////////////////////////////////////
+AActor* UGObjectManager::GetActiveExocismCircleByActor()
+{
+    return ActiveExocismCircle;
+}
+
 void UGObjectManager::RegisterFixedObject(FName TID, AGFixedObject* Target)
 {
     if (TID == "Obj_Incinerator")
@@ -620,14 +628,54 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
         HeldObj->GetComponents<UGBurningCompopnent>(BurningEquip);
         if (BurningEquip.Num() > 0 && InteractionComp->IsCheckingIncineratorZone())
         {
-            // set empty - current held obj
-            PlayerChar->DropHeldObject(CurrSlotIndex);
+            // cleaning basket
+            if (HeldObj->GetNonfixedObjCoreComp()->TID == "Obj_CBasket")
+            {
 
-            // change object state -> distinegrating
-            HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Disintegrating);
+            }
+
+            // normal case
+            else
+            {
+                // set empty - current held obj
+                PlayerChar->DropHeldObject(CurrSlotIndex);
+
+                // change object state -> distinegrating
+                HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Disintegrating);
+            }
         }
 
-        // type1-2. pick type: drop object
+        // type1-2. bucket
+        else if (HeldObj->GetNonfixedObjCoreComp()->TID == "Obj_Bucket")
+        {
+            // watertank
+            AGFixedObject* Target = Cast<AGFixedObject>(PlayerChar->GetInteractionComp()->GetCurrentTarget());
+            auto MapManager = GetWorld()->GetSubsystem<UGMapManager>();
+
+            if (Target && Target == WaterTank)
+            {
+                // 추후 watertank 물줄기 흐르는 로직 추가
+
+                HeldObj->GetComponentByClass<UGBucketComponent>()->FillBucket();
+            }
+
+            // outdoor
+            else if (MapManager && 
+                (MapManager->IsActorInZoneType(PlayerChar, EGZoneType::E_Outdoor) 
+                    || MapManager->IsActorInZoneType(PlayerChar, EGZoneType::E_Basecamp)))
+            {
+                HeldObj->GetComponentByClass<UGBucketComponent>()->EmptyBucket();
+            }
+
+            // drop
+            else
+            {
+                PlayerChar->DropHeldObject(CurrSlotIndex);
+                HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Static);
+            }
+        }
+
+        // type1-3. pick type: drop object
         else
         {
             // set empty - current held obj
@@ -980,6 +1028,49 @@ void UGObjectManager::RestoreBigWasteObject(int32 IID)
         // GameState->AddSpiritualGauge(Data->Pollution);
     }
 }
+
+
+
+// fixed object - exocism circle
+void UGObjectManager::ActivateExocismCircle(AGFixedObject* DeactiveTarget = nullptr)
+{
+    if (ExocismCircle.Num() < 1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[EXOCISM CIRCLE] There's no exocism circle!"));
+        return;
+    }
+
+
+    AGFixedObject* ActiveTarget = nullptr;
+
+    if (ExocismCircle.Num() == 1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[EXOCISM CIRCLE] There's one exocism circle! Same circle activate..."));
+
+        ActiveTarget = ExocismCircle[0];
+    }
+    else
+    {
+        int32 RandomIndex;
+
+        while (!ActiveTarget)
+        {
+            RandomIndex = FMath::RandRange(0, ExocismCircle.Num() - 1);
+
+            if (ExocismCircle[RandomIndex] == DeactiveTarget) continue;
+
+            ActiveTarget = ExocismCircle[RandomIndex];
+        }
+    }
+
+
+    ActiveTarget->GetComponentByClass<UGExocismComponent>()->ActivateExocismCircle();
+
+    ActiveExocismCircle = ActiveTarget;
+}
+
+
+
 
 
 

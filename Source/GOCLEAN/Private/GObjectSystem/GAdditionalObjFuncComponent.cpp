@@ -226,7 +226,7 @@ void UGRemovingComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 			SetVisualByInteractionCnt(Owner, EquipComp, *Data);
 
 			// 물걸레의 오염도를 증가
-			// EquipComp->AddMopPollution(20.0f);
+			EquipComp->AddMopPollution(20.0f);
 		}
 		else
 		{
@@ -356,23 +356,22 @@ void UGBurningCompopnent::StartBurning(AGNonfixedObject* Owner)
 
 	// set object's transform
 	auto ObjectManager = GetWorld()->GetSubsystem<UGObjectManager>();
-	if (ObjectManager && ObjectManager->GetIncineratorActor())
-	{
-		AGFixedObject* Incinerator = ObjectManager->GetIncineratorActor();
+	if (!ObjectManager) return;
+
+	Incinerator = ObjectManager->GetIncineratorActor();
+	if (!Incinerator) return;
+
+	FBox Bounds = Incinerator->GetComponentsBoundingBox();
+
+	FVector DropLocation = Incinerator->GetActorLocation();
+	DropLocation.Z = Bounds.Max.Z + 10.f;
+
+	Owner->SetActorLocation(DropLocation);
+	Owner->SetActorRotation(FRotator::ZeroRotator);
 
 
-		FBox Bounds = Incinerator->GetComponentsBoundingBox();
-
-		FVector DropLocation = Incinerator->GetActorLocation();
-		DropLocation.Z = Bounds.Max.Z + 10.f;
-
-		
-		Owner->SetActorLocation(DropLocation);
-		Owner->SetActorRotation(FRotator::ZeroRotator);
-
-
-		Incinerator->OnCustomEvent_Bool(true);
-	}
+	// call incinerator's event function_bool > true
+	Incinerator->OnCustomEvent_Bool(true);
 
 
 	// start timer
@@ -387,10 +386,16 @@ void UGBurningCompopnent::StartBurning(AGNonfixedObject* Owner)
 
 void UGBurningCompopnent::OnBurnTimerFinished()
 {
+	if (!Incinerator) return;
+
 	AGNonfixedObject* Owner = Cast<AGNonfixedObject>(GetOwner());
 	if (Owner && Owner->GetNonfixedObjCoreComp())
 	{
 		Owner->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Destroyed);
+
+
+		// call incinerator's event function_bool > false
+		Incinerator->OnCustomEvent_Bool(false);
 	}
 }
 
@@ -528,13 +533,20 @@ void UGBucketComponent::BeginPlay()
 	{
 		ObjManager->RegisterBucketIndex(Owner->GetNonfixedObjCoreComp()->IID);
 	}
+
+	
+	bHasWater = false;
+
+	bIsSpilled = false;
+
+	Pollution = 0.0f;
 }
 
 void UGBucketComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	// 손에 들려있는 상태가 아닐 때만 엎어짐 체크 (들고 있을 땐 손 각도에 따라다니므로 제외 가능)
+	// 손에 들려있는 상태가 아닐 때만 엎어짐 체크
 	AGNonfixedObject* Owner = Cast<AGNonfixedObject>(GetOwner());
 	if (Owner && Owner->GetNonfixedObjCoreComp()->GetState() != ENonfixedObjState::E_Picked)
 	{
@@ -546,22 +558,66 @@ void UGBucketComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 {
 	if (!Target) return;
 
-	FName EquipID = Target->GetEquipComp()->GetCurrentEquipmentID();
+	auto EquipComp = Target->GetEquipComp();
+	if (!EquipComp) return;
 
+	FName EquipID = EquipComp->GetCurrentEquipmentID();
+
+	// type 1. 물걸레
 	if (EquipID == "Eq_Mop")
 	{
-		UE_LOG(LogGObject, Log, TEXT("[Bucket] Cleaning the mop..."));
-		Target->GetEquipComp()->AddMopPollution(-100.0f);
+		if (!bHasWater) return;
 
-		// 여기에 물 출렁이는 사운드나 파티클을 추가하면 금상첨화!
+		UE_LOG(LogGObject, Log, TEXT("[Bucket] Cleaning the mop"));
+
+		if (Pollution < PollutionLV3)
+		{
+			EquipComp->AddMopPollution(-100.0f);
+			AddPollution();
+		}
+		else
+		{
+			EquipComp->AddMopPollution(100.0f);
+		}
+
+		// 물 튀는 효과
+	}
+	// type 2. 손으로 든 경우
+	else if (EquipID == "Eq_Hand")
+	{
+		UE_LOG(LogGObject, Log, TEXT("[Bucket] Pick up bucket"));
+		bIsSpilled = false;
+	}
+	// type 3. 
+}
+
+// water
+void UGBucketComponent::FillBucket(bool bAbPenomena)
+{
+	bHasWater = true;
+
+	if (bAbPenomena)
+	{
+		AddPollution(true);
 	}
 }
 
+void UGBucketComponent::EmptyBucket()
+{
+	bHasWater = false;
+
+	// 물 비워지는 effect
+
+	// 물 표면 데칼 없애기
+
+	Pollution = 0.0f;
+}
+
+// spill 
 void UGBucketComponent::CheckSpill()
 {
-	if (bIsSpilled) return;
+	if (bIsSpilled || !bHasWater) return;
 
-	// 액터의 UpVector.Z가 1.0이면 정방향, 0.0이면 90도 누운 상태입니다.
 	float UpZ = GetOwner()->GetActorUpVector().Z;
 
 	if (UpZ < SpillThreshold)
@@ -573,24 +629,44 @@ void UGBucketComponent::CheckSpill()
 void UGBucketComponent::SpillFilth()
 {
 	bIsSpilled = true;
-	UE_LOG(LogGObject, Warning, TEXT("[Bucket] OOPS! Spilled!"));
+	UE_LOG(LogGObject, Warning, TEXT("[Bucket] Spilled"));
 
 	UWorld* World = GetWorld();
 	if (!World) return;
 
+
+	EmptyBucket();
+	if (Pollution < PollutionLV1) return;
+
+
+	// set derived filth's id by pollution level
+	FName FID = FilthTID[1];
+
+	if (Pollution >= PollutionLV3) FID = FilthTID[3];
+	else if (Pollution >= PollutionLV2) FID = FilthTID[2];
+
+
+	// spawn derived filth
 	auto* ObjectManager = World->GetSubsystem<UGObjectManager>();
 	if (ObjectManager)
 	{
-		// 양동이 위치 바닥에 Filth 스폰
 		FVector SpawnLocation = GetOwner()->GetActorLocation();
 		FRotator SpawnRotation = FRotator::ZeroRotator;
 
 		ObjectManager->SpawnNonfixedObject(
-			FilthTID,
+			FID,
 			ENonfixedObjState::E_Static,
 			SpawnLocation,
 			SpawnRotation);
 	}
 }
 
+// pollution
+void UGBucketComponent::AddPollution(bool bAbPenomena)
+{
+	float AddValue = bAbPenomena ? PollutionLV3 : InteractionPollution;
+	Pollution += AddValue;
+
+	// Pollution LV에 따라 물 color 바꾸기
+}
 
