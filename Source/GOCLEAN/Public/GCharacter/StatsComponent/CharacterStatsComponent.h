@@ -120,7 +120,7 @@ private:
 		MaxSanity = BaseMaxSanity;
 		CurrentSanity = MaxSanity;
 		SanityDrainRate = 0.18f;
-		SanityDrainMultiplier = 100.0f;
+		SanityDrainMultiplier = 1.0f;
 
 		MaxStamina = BaseMaxStamina;
 		CurrentStamina = BaseMaxStamina;
