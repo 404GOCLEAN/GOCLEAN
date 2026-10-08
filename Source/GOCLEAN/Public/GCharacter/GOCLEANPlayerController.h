@@ -15,6 +15,8 @@
 class UInputMappingContext;
 class URPCRouterComponent;
 
+class UInputAction;
+
 UCLASS()
 class GOCLEAN_API AGOCLEANPlayerController : public APlayerController
 {
@@ -106,5 +108,49 @@ public:
 
 protected:
 	void EnsureVendingWidget();
+
+
+
+	// Additional Input //
+	// IA
+protected:
+	virtual void SetupInputComponent() override;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputAction* IA_SwitchPlayer;
+
+private:
+	// 관전 연결 필요
+	void SwitchSpectatorTarget();
+
+
+	// IMC
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	UInputMappingContext* IMC_Cabinet;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	UInputMappingContext* IMC_Spectator;
+
+
+public:
+	UFUNCTION()
+	void SwitchToDefaultIMC();
+
+	UFUNCTION()
+	void SwitchToCabinetIMC();
+
+	UFUNCTION()
+	void SwitchToSpectatorIMC();
+
+
+	// Spectator UI
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUserWidget> SpectatorWidgetClass;
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Spectator")
+	void ShowSpectatorUI();
+
 
 };

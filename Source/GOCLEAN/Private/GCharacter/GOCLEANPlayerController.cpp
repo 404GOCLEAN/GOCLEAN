@@ -1,4 +1,5 @@
 #include "GCharacter/GOCLEANPlayerController.h"
+#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 
@@ -189,5 +190,96 @@ void AGOCLEANPlayerController::ToggleVendingUI()
     else
     {
         OpenVendingUI();
+    }
+}
+
+
+
+// Additional Input //
+
+// IA
+void AGOCLEANPlayerController::SetupInputComponent()
+{
+    Super::SetupInputComponent();
+
+    if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
+    {
+        EnhancedInputComponent->BindAction(IA_SwitchPlayer,
+            ETriggerEvent::Started,
+            this,
+            &AGOCLEANPlayerController::SwitchSpectatorTarget);
+    }
+}
+
+void AGOCLEANPlayerController::SwitchSpectatorTarget()
+{
+    // 관전 중인 플레이어를 변경
+}
+
+
+// IMC
+void AGOCLEANPlayerController::SwitchToDefaultIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (InputMappingContext)
+        {
+            Subsystem->AddMappingContext(InputMappingContext, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+void AGOCLEANPlayerController::SwitchToCabinetIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (IMC_Cabinet)
+        {
+            Subsystem->AddMappingContext(IMC_Cabinet, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+void AGOCLEANPlayerController::SwitchToSpectatorIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (IMC_Spectator)
+        {
+            Subsystem->AddMappingContext(IMC_Spectator, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+
+// Spectator UI
+void AGOCLEANPlayerController::ShowSpectatorUI()
+{
+    // 기존 위젯 제거
+    if (CurrentWidget)
+    {
+        CurrentWidget->RemoveFromParent();
+        CurrentWidget = nullptr;
+    }
+
+    if (!SpectatorWidgetClass) return;
+
+    CurrentWidget = CreateWidget<UUserWidget>(this, SpectatorWidgetClass);
+    if (CurrentWidget)
+    {
+        CurrentWidget->AddToViewport();
+
+        bShowMouseCursor = false;
+        FInputModeGameOnly Mode;
+        SetInputMode(Mode);
     }
 }
