@@ -7,6 +7,7 @@
 #include "GObjectSystem/GNonfixedObject.h"
 #include "GObjectSystem/GNonfixedObjCoreComponent.h"
 #include "GObjectSystem/GFixedObject.h"
+#include "GObjectSystem/GExocismComponent.h"
 
 #include "GCharacter/GOCLEANCharacter.h"
 #include "GPlayerSystem/InteractionComponent.h"
@@ -14,10 +15,14 @@
 #include "GDataManagerSubsystem.h"
 #include "GTypes/IGInteractable.h"
 
+#include "GMapSystem/Server/GMapManager.h"
+
 #include "ServerModule/GameSession/GameSessionState.h"
 #include "GTypes/DataTableRow/GObjectDataRow.h"
+#include "ServerModule/GameSession/InGameGameState.h"
 
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 
 
 ////////////////////////////////////////////
@@ -76,6 +81,8 @@ void UGObjectManager::OnWorldBeginPlay(UWorld& InWorld)
     Super::OnWorldBeginPlay(InWorld);
 
     InitiateObjects();
+
+    InitializeWindowList();
 }
 
 
@@ -192,7 +199,7 @@ AGNonfixedObject* UGObjectManager::SpawnNonfixedObject(
 
         if (Data && GameState)
         {
-            GameState->AddSpiritualGauge(Data->Pollution);
+            //GameState->AddSpiritualGauge(Data->Pollution);
         }
     }
 
@@ -241,7 +248,7 @@ void UGObjectManager::InitiateObjects()
     if (GameState)
     {
         // 청소 90% 진행하면 청소 완료한 것으로 간주
-        GameState->ResetSpiritualAndRestGauge(InitialSpiritualGuage * 0.9f);
+        //GameState->ResetSpiritualAndRestGauge(InitialSpiritualGuage * 0.9f);
     }
 }
 
@@ -333,6 +340,7 @@ void UGObjectManager::OnDestoyed(AGNonfixedObject* DestroyedObj, const FGObjectD
     if (Data->Category == EGObjectCategory::E_Trash_B)
     {
         DestroyedObjs.Enqueue(DestroyedObj->GetNonfixedObjCoreComp()->IID);
+        DestroyedBigWasteIndices.Add(DestroyedObj->GetNonfixedObjCoreComp()->IID);
     }
     else
     {
@@ -391,6 +399,11 @@ AGNonfixedObject* UGObjectManager::SpawnNonfixedObjectAtPlayerSight(
 ////////////////////////////////////////////
 // Fixed Object
 ////////////////////////////////////////////
+AActor* UGObjectManager::GetActiveExocismCircleByActor()
+{
+    return ActiveExocismCircle;
+}
+
 void UGObjectManager::RegisterFixedObject(FName TID, AGFixedObject* Target)
 {
     if (TID == "Obj_Incinerator")
@@ -615,14 +628,54 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
         HeldObj->GetComponents<UGBurningCompopnent>(BurningEquip);
         if (BurningEquip.Num() > 0 && InteractionComp->IsCheckingIncineratorZone())
         {
-            // set empty - current held obj
-            PlayerChar->DropHeldObject(CurrSlotIndex);
+            // cleaning basket
+            if (HeldObj->GetNonfixedObjCoreComp()->TID == "Obj_CBasket")
+            {
 
-            // change object state -> distinegrating
-            HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Disintegrating);
+            }
+
+            // normal case
+            else
+            {
+                // set empty - current held obj
+                PlayerChar->DropHeldObject(CurrSlotIndex);
+
+                // change object state -> distinegrating
+                HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Disintegrating);
+            }
         }
 
-        // type1-2. pick type: drop object
+        // type1-2. bucket
+        else if (HeldObj->GetNonfixedObjCoreComp()->TID == "Obj_Bucket")
+        {
+            // watertank
+            AGFixedObject* Target = Cast<AGFixedObject>(PlayerChar->GetInteractionComp()->GetCurrentTarget());
+            auto MapManager = GetWorld()->GetSubsystem<UGMapManager>();
+
+            if (Target && Target == WaterTank)
+            {
+                // 추후 watertank 물줄기 흐르는 로직 추가
+
+                HeldObj->GetComponentByClass<UGBucketComponent>()->FillBucket();
+            }
+
+            // outdoor
+            else if (MapManager && 
+                (MapManager->IsActorInZoneType(PlayerChar, EGZoneType::E_Outdoor) 
+                    || MapManager->IsActorInZoneType(PlayerChar, EGZoneType::E_Basecamp)))
+            {
+                HeldObj->GetComponentByClass<UGBucketComponent>()->EmptyBucket();
+            }
+
+            // drop
+            else
+            {
+                PlayerChar->DropHeldObject(CurrSlotIndex);
+                HeldObj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Static);
+            }
+        }
+
+        // type1-3. pick type: drop object
         else
         {
             // set empty - current held obj
@@ -730,11 +783,78 @@ void UGObjectManager::HandleWaterTankStartFill(APlayerController* PC, int32 Wate
     //  물 담기 시작 (서버에서 판정 후 완료 시 S2C 알림 필요)
 }
 
-void UGObjectManager::HandleVendingSelectItem(APlayerController* PC, FName ItemTypeId)
+void UGObjectManager::HandleVendingSelectItem(APlayerController* PC, int32 ItemId)
 {
-    UE_LOG(LogTemp, Log, TEXT("[C2S] Vending_SelectItem by %s, ItemType=%s"), PC ? *PC->GetName() : TEXT("NULL"), *ItemTypeId.ToString());
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Vending] HandleVendingSelectItem START ItemId=%d"),
+        ItemId
+    );
 
-    // 선택 카운트/스폰 조건 처리
+    if (!PC)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] FAILED: PC is null")
+        );
+        return;
+    }
+
+    UWorld* World = GetWorld();
+
+    if (!World)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] FAILED: World is null")
+        );
+        return;
+    }
+
+    AInGameGameState* GS = World->GetGameState<AInGameGameState>();
+
+    if (!GS)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[Vending] FAILED: InGameGameState is null")
+        );
+        return;
+    }
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Vending] Before Take ItemId=%d Count=%d"),
+        ItemId,
+        GS->GetVendingRemainingCount(ItemId)
+    );
+
+    const bool bSuccess =
+        GS->TryTakeVendingItem(ItemId);
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("[Vending] After Take ItemId=%d Count=%d Success=%s"),
+        ItemId,
+        GS->GetVendingRemainingCount(ItemId),
+        bSuccess ? TEXT("true") : TEXT("false")
+    );
+
+    if (!bSuccess)
+    {
+        return;
+    }
+
+    // ========================================
+    // TODO:
+    // 실제 아이템 Spawn / 지급
+    // ========================================
 }
 
 void UGObjectManager::HandleBucketPourWater(APlayerController* PC, int32 BucketInstanceId)
@@ -849,4 +969,117 @@ void UGObjectManager::HandleUseItemOnObject(APlayerController* PC, int32 ItemId,
         GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan,
             FString::Printf(TEXT("[Server][OM] UseItem %d -> Target=%d"), ItemId, TargetInstanceId));
     }
+}
+
+
+
+// 단서 행동
+
+// LeaveFrost
+void UGObjectManager::InitializeWindowList()
+{
+    WindowList.Empty();
+
+    UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName("Window"), WindowList);
+
+    UE_LOG(LogTemp, Log, TEXT("[WINDOW] Found windows: %d"), WindowList.Num());
+}
+
+
+// SpillWaterBucket
+void UGObjectManager::RegisterBucketIndex(int32 IID)
+{
+    if (!NfixedObjects.Contains(IID)) return;
+
+    BucketIndices.Add(IID);
+
+    UE_LOG(LogTemp, Log, TEXT("[BUCKET] New bucket was spawned! : Instance ID - %d"), IID);
+}
+
+
+// RestoreWaste
+void UGObjectManager::RegisterDestroyedBigWasteIndex(int32 IID)
+{
+    if (!NfixedObjects.Contains(IID)) return;
+
+    DestroyedBigWasteIndices.Add(IID);
+
+    UE_LOG(LogTemp, Log, TEXT("[WASTE] New big waste was destroyed! : Instance ID - %d"), IID);
+}
+
+void UGObjectManager::RestoreBigWasteObject(int32 IID)
+{
+    AGNonfixedObject* Obj = GetNonfixedObject(IID);
+    if (!IsValid(Obj)) return;
+
+
+    // change the closest waste's state : static
+    Obj->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Static);
+
+
+    // add spritual guage
+    auto* DataManager = GetWorld()->GetGameInstance()->GetSubsystem<UGDataManagerSubsystem>();
+    auto* Data = DataManager ? DataManager->GetObjectData(Obj->GetNonfixedObjCoreComp()->TID) : nullptr;
+
+    AGameSessionState* GameState = Cast<AGameSessionState>(GetWorld()->GetGameState());
+
+    if (Data && GameState)
+    {
+        // GameState->AddSpiritualGauge(Data->Pollution);
+    }
+}
+
+
+
+// fixed object - exocism circle
+void UGObjectManager::ActivateExocismCircle(AGFixedObject* DeactiveTarget = nullptr)
+{
+    if (ExocismCircle.Num() < 1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[EXOCISM CIRCLE] There's no exocism circle!"));
+        return;
+    }
+
+
+    AGFixedObject* ActiveTarget = nullptr;
+
+    if (ExocismCircle.Num() == 1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[EXOCISM CIRCLE] There's one exocism circle! Same circle activate..."));
+
+        ActiveTarget = ExocismCircle[0];
+    }
+    else
+    {
+        int32 RandomIndex;
+
+        while (!ActiveTarget)
+        {
+            RandomIndex = FMath::RandRange(0, ExocismCircle.Num() - 1);
+
+            if (ExocismCircle[RandomIndex] == DeactiveTarget) continue;
+
+            ActiveTarget = ExocismCircle[RandomIndex];
+        }
+    }
+
+
+    ActiveTarget->GetComponentByClass<UGExocismComponent>()->ActivateExocismCircle();
+
+    ActiveExocismCircle = ActiveTarget;
+}
+
+
+
+
+
+
+// legacy
+void UGObjectManager::RegisterWindow(AActor* WindowActor)
+{
+    if (!WindowActor) return;
+
+    WindowList.Add(WindowActor);
+
+    UE_LOG(LogGObject, Log, TEXT("[WINDOW] Window registered: %d"), WindowList.Num());
 }

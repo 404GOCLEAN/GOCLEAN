@@ -16,7 +16,26 @@ UCLASS()
 class GOCLEAN_API ULeaveBloodFootstep : public UEvidenceBehavior
 {
 	GENERATED_BODY()
+
+protected:
+	UFUNCTION()
+	void SpawnFootprint();
 	
+
 public:
 	virtual void ExecuteBehavior(AActor* GhostActor) override;
+
+
+private:
+	// Timer handler
+	UPROPERTY()
+	FTimerHandle SpawnTimerHandle;
+
+	// Target ghost
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<AActor> TargetGhost;
+
+	// Spawn parameters
+	FName FootprintID;
+	int32 SpawnRemainingCount = 0;
 };

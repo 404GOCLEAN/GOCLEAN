@@ -15,6 +15,8 @@
 class UInputMappingContext;
 class URPCRouterComponent;
 
+class UInputAction;
+
 UCLASS()
 class GOCLEAN_API AGOCLEANPlayerController : public APlayerController
 {
@@ -67,16 +69,10 @@ public:
 	void ShowLobbyUI();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
-	void CloseLobbyUI();
-
-	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowResultUI();
 
 	UFUNCTION(BlueprintCallable, Client, Reliable)
 	void Client_ShowLobbyUI();
-
-	UFUNCTION(BlueprintCallable, Client, Reliable)
-	void Client_CloseLobbyUI();
 
 	// Server -> owning client
 	UFUNCTION(Client, Reliable)
@@ -86,7 +82,8 @@ public:
 
 	void ChangeSlot(int32 SlotIndex);
 
-
+	UFUNCTION(BlueprintCallable, Category = "Vending")
+	void RequestTakeVendingItem(int32 ItemId);
 
 public:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
@@ -113,16 +110,47 @@ protected:
 	void EnsureVendingWidget();
 
 
-public:
-	UFUNCTION(BlueprintCallable, Category = "Vending")
-	void RequestTogglePurchasedVending(int32 ItemId);
 
+	// Additional Input //
+	// IA
 protected:
-	UFUNCTION(Server, Reliable)
-	void Server_TogglePurchasedVending(int32 ItemId);
+	virtual void SetupInputComponent() override;
 
-	void Server_TogglePurchasedVending_Implementation(int32 ItemId);
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputAction* IA_SwitchPlayer;
 
-	int32 GetMySeatIndex_ServerSafe() const;
+private:
+	// 관전 연결 필요
+	void SwitchSpectatorTarget();
+
+
+	// IMC
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	UInputMappingContext* IMC_Cabinet;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	UInputMappingContext* IMC_Spectator;
+
+
+public:
+	UFUNCTION()
+	void SwitchToDefaultIMC();
+
+	UFUNCTION()
+	void SwitchToCabinetIMC();
+
+	UFUNCTION()
+	void SwitchToSpectatorIMC();
+
+
+	// Spectator UI
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUserWidget> SpectatorWidgetClass;
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Spectator")
+	void ShowSpectatorUI();
+
 
 };

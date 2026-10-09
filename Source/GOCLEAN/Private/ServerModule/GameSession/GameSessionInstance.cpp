@@ -50,6 +50,55 @@ void UGameSessionInstance::HandlePostLoadMap(UWorld* LoadedWorld)
     UITryCount = 0;
 
     ScheduleTryShowUI(LoadedWorld, 0.1f);
+
+
+    // ==========================
+    // Voice
+    // ==========================
+
+    UVoiceChattingManager* VoiceManager =
+        GetSubsystem<UVoiceChattingManager>();
+
+    if (!VoiceManager)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[GI] VoiceManager NULL")
+        );
+
+        return;
+    }
+
+
+    // TODO:
+    // 실제 Steam ID 등으로 교체
+    const FString PlayerVoiceId = TEXT("TODO_PlayerId");
+
+
+    // Lobby
+    if (LevelName.Equals(TEXT("test_Lobby")))
+    {
+        if (!PendingJoinCode.IsEmpty())
+        {
+            VoiceManager->Vivox_EnterLobbyVoice(PlayerVoiceId, PendingJoinCode);
+        }
+    }
+
+    // InGame
+    else if (LevelName.Equals(TEXT("YourInGameMapName")))
+    {
+        if (!PendingJoinCode.IsEmpty())
+        {
+            VoiceManager->Vivox_EnterInGameVoice(PlayerVoiceId, PendingJoinCode);
+        }
+    }
+
+    // Title
+    else if (LevelName.Equals(TEXT("test_Title")))
+    {
+        VoiceManager->Vivox_LeaveVoice();
+    }
 }
 
 void UGameSessionInstance::TryShowLevelUI()
@@ -127,4 +176,54 @@ void UGameSessionInstance::Voice_UpdateCache(bool bJoined, float EnergyRaw01, fl
     VoiceLevelCorrected01 = LevelCorrected01;
     bVoiceMicMuted = bMicMuted;
     VoiceStimuliMap = InStimuliMap;
+}
+
+FString UGameSessionInstance::GenerateJoinCode(int32 DigitCount)
+{
+    DigitCount =  FMath::Clamp(DigitCount, 1, 9);
+
+
+    FString Result;
+
+    Result.Reserve(DigitCount);
+
+
+    for (int32 i = 0; i < DigitCount; ++i)
+    {
+        const int32 Digit = FMath::RandRange(0, 9);
+
+        Result.AppendChar(TCHAR('0' + Digit));
+    }
+
+
+    return Result;
+}
+
+
+bool UGameSessionInstance::IsValidJoinCode(const FString& JoinCode, int32 ExpectedDigitCount) const
+{
+    if (ExpectedDigitCount <= 0)
+        return false;
+
+
+    if (JoinCode.Len() != ExpectedDigitCount)
+        return false;
+
+
+    for (TCHAR Character : JoinCode)
+    {
+        if (!FChar::IsDigit(Character))
+        {
+            return false;
+        }
+    }
+
+
+    return true;
+}
+
+
+void UGameSessionInstance::ClearPendingJoinCode()
+{
+    PendingJoinCode.Empty();
 }

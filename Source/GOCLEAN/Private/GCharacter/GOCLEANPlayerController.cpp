@@ -1,12 +1,10 @@
 #include "GCharacter/GOCLEANPlayerController.h"
+#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 
 #include "Net/RpcTypes.h"
 #include "ServerModule/GameSession/RPCRouterComponent.h"
-
-#include <ServerModule/GameSession/GameSessionState.h>
-#include <ServerModule/GameSession/PlayerSessionState.h>
 
 #include "ServerModule/Sound/AmbientAudioManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -21,23 +19,13 @@ void AGOCLEANPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-
-    if (IsLocalController() && GetWorld()->GetMapName() == TEXT("FirstPersonMap"))
-    {
-        if (GEngine && GEngine->GameViewport)
-        {
-            GEngine->GameViewport->RemoveAllViewportWidgets();
-            UE_LOG(LogTemp, Log, TEXT("[Server/Client] Force Clear All Widgets in New Level"));
-        }
-    }
-
-
 	// get the enhanced input subsystem
 	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 	{
 		// add the mapping context so we get controls
 		Subsystem->AddMappingContext(InputMappingContext, 0);
 	}
+
 }
 
 void AGOCLEANPlayerController::ShowTitleUI()
@@ -83,14 +71,6 @@ void AGOCLEANPlayerController::ShowLobbyUI()
         SetInputMode(Mode);
     }
 }
-void AGOCLEANPlayerController::CloseLobbyUI()
-{
-    if (CurrentWidget)
-    {
-        CurrentWidget->RemoveFromParent();
-        CurrentWidget = nullptr;
-    }
-}
 
 void AGOCLEANPlayerController::ShowResultUI()
 {
@@ -118,12 +98,6 @@ void AGOCLEANPlayerController::Client_ShowLobbyUI_Implementation()
     ShowLobbyUI();
 }
 
-void AGOCLEANPlayerController::Client_CloseLobbyUI_Implementation()
-{
-    CloseLobbyUI();
-}
-
-
 void AGOCLEANPlayerController::Client_ShowResultUI_Implementation()
 {
     ShowResultUI();
@@ -142,6 +116,20 @@ void AGOCLEANPlayerController::ChangeSlot(int32 SlotIndex)
     Temp.ParamInt = SlotIndex;
 
     RPCRouter->Server_PlayerEvent(EPlayerEvent_C2S::RequestChangeCurrentSlotIndex, Temp);
+}
+
+void AGOCLEANPlayerController::RequestTakeVendingItem(int32 ItemId)
+{
+    if (!RPCRouter)
+        return;
+
+    FObjectPayload_C2S Payload;
+    Payload.ParamInt = ItemId;
+
+    RPCRouter->Server_ObjectEvent(
+        EObjectEvent_C2S::Vending_SelectItem,
+        Payload
+    );
 }
 
 
@@ -207,26 +195,91 @@ void AGOCLEANPlayerController::ToggleVendingUI()
 
 
 
-void AGOCLEANPlayerController::RequestTogglePurchasedVending(int32 ItemId)
+// Additional Input //
+
+// IA
+void AGOCLEANPlayerController::SetupInputComponent()
 {
-    Server_TogglePurchasedVending(ItemId);
+    Super::SetupInputComponent();
+
+    if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
+    {
+        EnhancedInputComponent->BindAction(IA_SwitchPlayer,
+            ETriggerEvent::Started,
+            this,
+            &AGOCLEANPlayerController::SwitchSpectatorTarget);
+    }
 }
 
-int32 AGOCLEANPlayerController::GetMySeatIndex_ServerSafe() const
+void AGOCLEANPlayerController::SwitchSpectatorTarget()
 {
-    const APlayerSessionState* PSS = Cast<APlayerSessionState>(PlayerState);
-    return PSS ? PSS->GetSeatIndex() : INDEX_NONE;
+    // 관전 중인 플레이어를 변경
 }
 
-void AGOCLEANPlayerController::Server_TogglePurchasedVending_Implementation(int32 ItemId)
+
+// IMC
+void AGOCLEANPlayerController::SwitchToDefaultIMC()
 {
-    AGameSessionState* GS = GetWorld() ? GetWorld()->GetGameState<AGameSessionState>() : nullptr;
-    if (!GS)
-        return;
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
 
-    const int32 PlayerId = GetMySeatIndex_ServerSafe();
-    if (PlayerId == INDEX_NONE)
-        return;
+        if (InputMappingContext)
+        {
+            Subsystem->AddMappingContext(InputMappingContext, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
 
-    GS->TogglePurchasedVending(PlayerId, ItemId);
+void AGOCLEANPlayerController::SwitchToCabinetIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (IMC_Cabinet)
+        {
+            Subsystem->AddMappingContext(IMC_Cabinet, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+void AGOCLEANPlayerController::SwitchToSpectatorIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (IMC_Spectator)
+        {
+            Subsystem->AddMappingContext(IMC_Spectator, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+
+// Spectator UI
+void AGOCLEANPlayerController::ShowSpectatorUI()
+{
+    // 기존 위젯 제거
+    if (CurrentWidget)
+    {
+        CurrentWidget->RemoveFromParent();
+        CurrentWidget = nullptr;
+    }
+
+    if (!SpectatorWidgetClass) return;
+
+    CurrentWidget = CreateWidget<UUserWidget>(this, SpectatorWidgetClass);
+    if (CurrentWidget)
+    {
+        CurrentWidget->AddToViewport();
+
+        bShowMouseCursor = false;
+        FInputModeGameOnly Mode;
+        SetInputMode(Mode);
+    }
 }

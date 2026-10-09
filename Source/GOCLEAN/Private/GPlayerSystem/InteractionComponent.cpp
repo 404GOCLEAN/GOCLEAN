@@ -67,7 +67,7 @@ void UInteractionComponent::PerformLineTrace()
 		// 1. actor type
 		if (HitActor->Implements<UGInteractable>())
 		{
-			CurrentTarget = HitActor; // 액터 통째로 저장!
+			CurrentTarget = HitActor; 
 			return;
 		}
 

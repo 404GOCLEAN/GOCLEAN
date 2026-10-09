@@ -19,4 +19,9 @@ class GOCLEAN_API ULeaveFrost : public UEvidenceBehavior
 
 public:
 	virtual void ExecuteBehavior(AActor* GhostActor) override;
+
+
+private:
+	UPROPERTY(EditAnywhere, Category = "Spawn")
+	TSubclassOf<AActor> FrostObjectClass;
 };

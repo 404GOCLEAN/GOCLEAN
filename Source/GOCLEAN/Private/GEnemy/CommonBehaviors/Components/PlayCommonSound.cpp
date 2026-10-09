@@ -2,7 +2,12 @@
 
 void UPlayCommonSound::ExecuteBehavior(AActor* GhostActor)
 {
-	if (GhostActor == nullptr) return;
+	AGhostBase* GhostCharacter = Cast<AGhostBase>(GhostActor);
+	if (GhostCharacter == nullptr) return;
+
+	if (!GhostCharacter->HasAuthority()) return;
+
+	GhostCharacter->Multicast_PlayCommonEventSound();
 
 	UE_LOG(LogTemp, Warning, TEXT("PlayCommonSound Implemented"));
 }

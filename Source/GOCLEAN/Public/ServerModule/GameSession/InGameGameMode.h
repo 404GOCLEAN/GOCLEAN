@@ -1,0 +1,126 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "ServerModule/GameSession/GameSessionMode.h"
+#include "ServerModule/GameSession/InGameGameState.h"
+#include "InGameGameMode.generated.h"
+
+class APlayerSessionState;
+class UDataTable;
+
+/**
+ * 
+ */
+UCLASS()
+class GOCLEAN_API AInGameGameMode : public AGameSessionMode
+{
+	GENERATED_BODY()
+	
+public:
+
+    AInGameGameMode();
+
+
+    // ===============
+    // Game Flow
+    // ==============
+
+    UFUNCTION(BlueprintCallable, Category = "Game|Flow")
+    void StartGame();
+
+    void StartExorcismPhase();
+
+    void StartExtractionPhase();
+
+    void FinishGame(bool bSuccess);
+
+
+    // ===========
+    // Gauge
+    // =========
+
+    void ChangeSpiritualGauge(float Delta);
+
+    void ChangeRestGauge(float Delta);
+
+    void ChangeExorcismProgress(float Delta);
+
+
+    // ===============
+    // Player
+    // ==============
+
+    void EliminatePlayer(AController* Controller);
+
+    void EscapePlayer(AController* Controller);
+
+    void RecalculateAliveSurvivors();
+
+
+protected:
+
+    virtual void BeginPlay() override;
+
+    virtual void PostLogin(APlayerController* NewPlayer) override;
+
+    virtual void Logout(AController* Exiting) override;
+
+
+    void InitializeGame();
+
+    void InitializePlayers();
+
+    void InitializeGameState();
+
+
+    // ===============
+    // Condition
+    // ===============
+
+    void CheckExorcismCondition();
+
+    void CheckGameEndCondition();
+
+
+    // =============
+    // Helper
+    // ============
+
+    AInGameGameState* GetInGameState() const;
+
+
+    virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
+
+private:
+
+    bool bGameFinished = false;
+
+    // =================
+    // Vending
+    // =================
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Vending", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UDataTable> VendingItemDataTable;
+
+
+    // =================
+    // Player Character
+    // =================
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character01PawnClass;
+
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character02PawnClass;
+
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character03PawnClass;
+
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "InGame|Character", meta = (AllowPrivateAccess = "true"))
+    TSubclassOf<APawn> Character04PawnClass;
+};

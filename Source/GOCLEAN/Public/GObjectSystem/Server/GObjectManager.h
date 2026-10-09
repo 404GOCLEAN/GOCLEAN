@@ -97,6 +97,9 @@ protected:
 	UPROPERTY()
 	TArray<TObjectPtr<AGFixedObject>> ExocismCircle;
 
+	UPROPERTY()
+	TObjectPtr<AGFixedObject> ActiveExocismCircle;
+
 	//		6. 물양동이 스포너
 	UPROPERTY()
 	TObjectPtr<AGFixedObject> BucketSpawner;
@@ -120,6 +123,24 @@ protected:
 	//		11. CCTV
 	UPROPERTY()
 	TObjectPtr<AGFixedObject> CCTV;
+
+
+
+
+	// fixed object
+public:
+	UFUNCTION()
+	void ActivateExocismCircle(AGFixedObject* DeactiveTarget);
+
+	UFUNCTION()
+	AGFixedObject* GetActiveExocismCircle()
+	{
+		return ActiveExocismCircle;
+	}
+
+	UFUNCTION()
+	AActor* GetActiveExocismCircleByActor();
+
 
 
 
@@ -176,6 +197,45 @@ public:
 
 
 
+	// 단서 행동
+private:
+	// LeaveFrost
+	UPROPERTY()
+	TArray<AActor*> WindowList;
+
+	void InitializeWindowList();
+
+
+	// SpillWaterBucket
+	TArray<int32> BucketIndices;
+
+
+	// RestoreWaste
+	TArray<int32> DestroyedBigWasteIndices;
+
+
+public:
+	// LeaveFrost
+	const TArray<AActor*> GetWindowList() { return WindowList; }
+
+	void RegisterWindow(AActor* WindowActor);
+
+
+	// SpillWaterBucket
+	void RegisterBucketIndex(int32 IID);
+
+	const TArray<int32> GetBucketIndices() { return BucketIndices; }
+
+
+	// RestoreWaste
+	void RegisterDestroyedBigWasteIndex(int32 IID);
+
+	const TArray<int32> GetDestroyedBigWasteIndices() { return DestroyedBigWasteIndices; }
+
+	void RestoreBigWasteObject(int32 IID);
+
+
+
 public:
 	// C -> S (서버 처리)
 
@@ -195,7 +255,7 @@ public:
 	void HandleWaterTankStartFill(class APlayerController* PC, int32 WaterTankInstanceId);
 
 	// 벤딩머신 아이템 선택 요청 처리
-	void HandleVendingSelectItem(class APlayerController* PC, FName ItemTypeId);
+	void HandleVendingSelectItem(class APlayerController* PC, int32 ParamInt);
 
 	// 양동이로 물 쏟기 요청 처리
 	void HandleBucketPourWater(class APlayerController* PC, int32 BucketInstanceId);
