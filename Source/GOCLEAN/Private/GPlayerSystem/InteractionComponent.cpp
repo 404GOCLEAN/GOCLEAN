@@ -58,7 +58,7 @@ void UInteractionComponent::PerformLineTrace()
 	
 	// shoot ray - Interaction
 	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End_Interaction, ECC_GInteractable, Params);
-	DrawDebugLine(GetWorld(), Start, End_Incinerator, bHit ? FColor::Green : FColor::Red, false, 0.1f, 0, 2.0f);
+	// DrawDebugLine(GetWorld(), Start, End_Incinerator, bHit ? FColor::Green : FColor::Red, false, 0.1f, 0, 2.0f);
 	if (bHit)
 	{
 		AActor* HitActor = HitResult.GetActor();

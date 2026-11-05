@@ -122,6 +122,17 @@ void AInGameGameState::SetExorcismState(EExorcismState NewState)
 
     ExorcismState = NewState;
 
+
+    if (ExorcismState == EExorcismState::InProgress)
+    {
+        auto* ObjManager = GetWorld()->GetSubsystem<UGObjectManager>();
+        if (IsValid(ObjectManager))
+        {
+            ObjManager->ActivateExocismCircle(nullptr);
+        }
+    }
+
+
     OnRep_ExorcismState();
 }
 
@@ -137,6 +148,16 @@ void AInGameGameState::SetInitialSpiritualGauge(float NewValue)
         return;
 
     InitialSpiritualGauge = NewValue;
+
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(
+            -1,                 // 메시지 키
+            5.0f,               // 표시 시간
+            FColor::Purple,      // 글자 색상
+            FString::Printf(TEXT("[Spiritual Gauge] Initial Spiritual Gauge %f"), InitialSpiritualGauge)
+        );
+    }
 
     SetSpiritualGauge(InitialSpiritualGauge);
 }

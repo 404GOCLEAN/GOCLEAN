@@ -163,7 +163,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "InGame|Gauge")
     float GetRemainingSpiritualGaugePercent() const
     {
-        return SpiritualGauge/InitialSpiritualGauge;
+        return SpiritualGauge/InitialSpiritualGauge * 100.0f;
     }
 
 

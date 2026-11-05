@@ -75,7 +75,7 @@ void AInGameGameMode::InitializeGameState()
 
     IGS->SetExorcismState(EExorcismState::None);
 
-    IGS->SetSpiritualGauge(100.f);
+    // IGS->SetSpiritualGauge(100.f);
     IGS->SetRestGauge(0.f);
 
     IGS->SetExorcismProgress(0.f);

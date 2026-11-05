@@ -18,6 +18,7 @@
 #include "GMapSystem/Server/GMapManager.h"
 
 #include "ServerModule/GameSession/InGameGameState.h"
+#include "ServerModule/GameSession/InGameGameMode.h"
 #include "GTypes/DataTableRow/GObjectDataRow.h"
 
 #include "EngineUtils.h"
@@ -194,11 +195,11 @@ AGNonfixedObject* UGObjectManager::SpawnNonfixedObject(
         Target->AttachToActor(ActiveRoot, FAttachmentTransformRules::KeepWorldTransform);
 
 
-        AInGameGameState* GameState = Cast<AInGameGameState>(GetWorld()->GetGameState());
+        AInGameGameMode* GameMode = Cast<AInGameGameMode>(GetWorld()->GetAuthGameMode());
 
-        if (Data && GameState)
+        if (Data && GameMode)
         {
-            GameState->AddSpiritualGauge(Data->Pollution);
+            GameMode->ChangeSpiritualGauge(Data->Pollution);
         }
     }
 
@@ -616,6 +617,7 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
     UGEquipmentComponent* EquipComp = PlayerChar->GetEquipComp();
     if (!InteractionComp || !EquipComp) return;
 
+    UObject* Target = PlayerChar->GetInteractionComp()->GetCurrentTarget();
 
     // get equip id
     FName EquipID = EquipComp->GetCurrentEquipmentID();
@@ -641,6 +643,7 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
         // type1-1. burning type: interaction with incinerator
         TArray<UGBurningCompopnent*> BurningEquip;
         HeldObj->GetComponents<UGBurningCompopnent>(BurningEquip);
+
         if (BurningEquip.Num() > 0 && InteractionComp->IsCheckingIncineratorZone())
         {
             // cleaning basket
@@ -664,12 +667,22 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
         else if (HeldObj->GetNonfixedObjCoreComp()->TID == "Obj_CBucket")
         {
             // watertank
-            AGFixedObject* Target = Cast<AGFixedObject>(PlayerChar->GetInteractionComp()->GetCurrentTarget());
+            AGFixedObject* FixedObj = Cast<AGFixedObject>(Target);
             auto MapManager = GetWorld()->GetSubsystem<UGMapManager>();
 
-            if (Target && Target == WaterTank)
+            if (FixedObj && FixedObj == WaterTank)
             {
                 // 추후 watertank 물줄기 흐르는 로직 추가
+
+                if (GEngine)
+                {
+                    GEngine->AddOnScreenDebugMessage(
+                        -1,                 // 메시지 키
+                        5.0f,               // 표시 시간
+                        FColor::Blue,      // 글자 색상
+                        TEXT("[Water Tank] fill bucket")
+                    );
+                }
 
                 HeldObj->GetComponentByClass<UGBucketComponent>()->FillBucket();
             }
@@ -693,6 +706,21 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
         // type1-3. pick type: drop object
         else
         {
+            UGEXToolComponent* EXToolComp = HeldObj->GetComponentByClass<UGEXToolComponent>();
+            if (EXToolComp && Target)
+            {
+                IGInteractable* Interactable = Cast<IGInteractable>(Target);
+                if (Interactable)
+                {
+                    if (Interactable->CanInteract(EquipID, PlayerChar))
+                    {
+                        Interactable->ExecuteInteraction(EquipID, PlayerChar);
+
+                        UE_LOG(LogGObject, Log, TEXT("[GCharacter] Interaction Executed on %s"), *Target->GetName());
+                    }
+                }
+            }
+            
             // set empty - current held obj
             PlayerChar->DropHeldObject(CurrSlotIndex);
 
@@ -709,8 +737,11 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
         {
             float MopPollution = EquipComp->GetMopPollution();
 
+            UGNonfixedObjCoreComponent* CoreComp = Cast< UGNonfixedObjCoreComponent>(Target);
+            FName TargetID = IsValid(CoreComp) ? CoreComp->TID : "";
+
             // try spawn filth when mop is dirty
-            if (MopPollution >= 100.0f)
+            if (MopPollution >= 20.0f && TargetID != "Obj_CBucket")
             {
                 UE_LOG(LogGObject, Log, TEXT("[Equipment] Using dirty mop! spawn a filth object..."));
 
@@ -753,7 +784,6 @@ void UGObjectManager::HandleTryInteract(APlayerController* PC, int32 TargetInsta
         }
 
         // type2-3. normal case: do interaction and check each condition of function components
-        UObject* Target = PlayerChar->GetInteractionComp()->GetCurrentTarget();
         if (Target)
         {
             IGInteractable* Interactable = Cast<IGInteractable>(Target);
@@ -1036,11 +1066,11 @@ void UGObjectManager::RestoreBigWasteObject(int32 IID)
     auto* DataManager = GetWorld()->GetGameInstance()->GetSubsystem<UGDataManagerSubsystem>();
     auto* Data = DataManager ? DataManager->GetObjectData(Obj->GetNonfixedObjCoreComp()->TID) : nullptr;
 
-    AInGameGameState* GameState = Cast<AInGameGameState>(GetWorld()->GetGameState());
+    AInGameGameMode* GameMode = Cast<AInGameGameMode>(GetWorld()->GetAuthGameMode());
 
-    if (Data && GameState)
+    if (Data && GameMode)
     {
-        GameState->AddSpiritualGauge(Data->Pollution);
+        GameMode->ChangeSpiritualGauge(Data->Pollution);
     }
 }
 

@@ -9,6 +9,7 @@
 #include "GEnemy/Components/MaidenGhost.h"
 
 #include "GObjectSystem/GFixedObject.h"
+#include "GObjectSystem/GNonfixedObject.h"
 #include "GObjectSystem/Server/GObjectManager.h"
 
 #include "Components/SphereComponent.h"
@@ -18,13 +19,14 @@
 #include "GPlayerSystem/GEquipment/GEquipmentComponent.h"
 
 #include "ServerModule/GameSession/InGameGameState.h"
+#include "ServerModule/GameSession/InGameGameMode.h"
 
 #include "Net/UnrealNetwork.h"
 
 
 UGExocismComponent::UGExocismComponent()
 {
-
+    SetIsReplicatedByDefault(true);
 }
 
 void UGExocismComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -50,6 +52,24 @@ void UGExocismComponent::InitializeAdditionalData(const FGNonfixedObjData& Data)
     {
         return;
     }
+}
+
+void UGExocismComponent::BeginPlay()
+{
+    auto* _Owner = GetOwner();
+
+    Decal = _Owner->GetComponentByClass<UDecalComponent>();
+
+
+    InteractionVolume = _Owner->GetComponentByClass<USphereComponent>();
+    if (IsValid(InteractionVolume))
+    {
+        InteractionVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        InteractionVolume->SetCollisionResponseToAllChannels(ECR_Overlap);
+        InteractionVolume->SetHiddenInGame(true);
+        InteractionVolume->SetSimulatePhysics(false);
+    }
+
 
 
     // 1. 귀신 종류에 따라 조건 함수 설정
@@ -89,29 +109,23 @@ void UGExocismComponent::InitializeAdditionalData(const FGNonfixedObjData& Data)
     }
 
 
-    // 2. 컴포넌트 등록
-    {
-        if (IsValid(OwnerActor))
-        {
-            InteractionVolume = OwnerActor->GetComponentByClass<USphereComponent>();
-            if (IsValid(InteractionVolume))
-            {
-                InteractionVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-                InteractionVolume->SetCollisionResponseToAllChannels(ECR_Overlap);
-                InteractionVolume->SetHiddenInGame(true);
-                InteractionVolume->SetSimulatePhysics(false);
-            }
-        }
-    }
-
-
-    // 3. deactive 상태로 초기화
+    // 2. deactive 상태로 초기화
     DeactivateExocismCircle();
 }
 
-void UGExocismComponent::BeginPlay()
+void UGExocismComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 {
-    Decal = GetOwner()->GetComponentByClass<UDecalComponent>();
+    if (!IsValid(Target) || !Target->GetEquipComp()) return;
+
+    AGNonfixedObject* HeldObj = Target->GetEquipComp()->GetCurrentHeldObject();
+    if (!HeldObj) return;
+
+
+    UGEXToolComponent* EXToolComp = HeldObj->GetComponentByClass< UGEXToolComponent>();
+    if (EXToolComp)
+    {
+        OnExocismCircleInteracted.Broadcast(Target);
+    }
 }
 
 
@@ -128,6 +142,20 @@ void UGExocismComponent::ActivateExocismCircle()
     if (IsValid(InteractionVolume))
     {
         InteractionVolume->SetCollisionResponseToChannel(ECC_GInteractable, ECR_Block);
+    }
+
+
+    StartCondition.Broadcast(nullptr);
+
+
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(
+            -1,                 // 메시지 키
+            5.0f,               // 표시 시간
+            FColor::Red,      // 글자 색상
+            FString::Printf(TEXT("[Exocism] circle active!"))
+        );
     }
 }
 
@@ -146,10 +174,10 @@ void UGExocismComponent::DeactivateExocismCircle()
 void UGExocismComponent::OnSuccessedInExocism()
 {
     // GameState에서 퇴마 프로세스 종료 처리
-    AInGameGameState* GameState = Cast<AInGameGameState>(GetWorld()->GetGameState());
-    if (IsValid(GameState))
+    AInGameGameMode* GameMode = Cast<AInGameGameMode>(GetWorld()->GetAuthGameMode());
+    if (IsValid(GameMode))
     {
-        GameState->AddExorcismProgress(34.0f);
+        GameMode->ChangeExorcismProgress(SuccessProgress);
     }
 }
 
@@ -183,7 +211,7 @@ void UGExocismComponent::ExocismStep0_DrownGhost(AGOCLEANCharacter* Target)
     OnExocismCircleInteracted.Clear();
     OnExocismCircleInteracted.AddUObject(this, &UGExocismComponent::ExocismStep1_DrownGhost);
 
-    NextTargetTID = "Cursed_MoonJar";
+    NextTargetTID = "Obj_FPot";
 
     SuccessProgress = 50.0f;
 }
@@ -211,7 +239,7 @@ void UGExocismComponent::ExocismStep1_DrownGhost(AGOCLEANCharacter* Target)
 
 
         // 로직
-        TargetEquipID = "Obj_Extool_Amulet";
+        NextTargetTID = "Obj_TAmulet";
 
         OnExocismCircleInteracted.Clear();
         OnExocismCircleInteracted.AddUObject(this, &UGExocismComponent::ExocismStep2_DrownGhost);
@@ -252,7 +280,7 @@ void UGExocismComponent::ExocismStep0_MaidenGhost(AGOCLEANCharacter* Target)
     OnExocismCircleInteracted.Clear();
     OnExocismCircleInteracted.AddUObject(this, &UGExocismComponent::ExocismStep1_MaidenGhost);
 
-    NextTargetTID = "Cursed_WhiteDress";
+    NextTargetTID = "Obj_FDress";
 
     SuccessProgress = 50.0f;
 }
@@ -280,10 +308,10 @@ void UGExocismComponent::ExocismStep1_MaidenGhost(AGOCLEANCharacter* Target)
 
 
         // 로직
-        TargetEquipID = "Obj_Extool_IronStake";
+        NextTargetTID = "Obj_TPile";
 
         OnExocismCircleInteracted.Clear();
-        OnExocismCircleInteracted.AddUObject(this, &UGExocismComponent::ExocismStep2_DrownGhost);
+        OnExocismCircleInteracted.AddUObject(this, &UGExocismComponent::ExocismStep2_MaidenGhost);
     }
 }
 

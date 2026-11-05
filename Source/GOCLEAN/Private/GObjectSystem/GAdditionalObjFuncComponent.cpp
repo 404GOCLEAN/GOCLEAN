@@ -16,6 +16,8 @@
 #include "GObjectSystem/Server/GObjectManager.h"
 #include "../../GOCLEAN.h"
 
+#include "GPlayerSystem\InteractionComponent.h"
+
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
@@ -159,6 +161,40 @@ void UGPickComponent::DropObject()
 
 	bIsPickedUp = false;
 	OwnerPlayer = nullptr;
+}
+
+void UGEXToolComponent::DropObject()
+{
+	if (!OwnerPlayer) return;
+
+	AGNonfixedObject* OwnerActor = Cast<AGNonfixedObject>(GetOwner());
+	if (!OwnerActor) return;
+
+
+	UInteractionComponent* InteractionComp = OwnerPlayer->GetInteractionComp();
+	AGFixedObject* Target = InteractionComp ?
+		Cast<AGFixedObject>(InteractionComp->GetCurrentTarget()) : nullptr;
+
+	if (IsValid(Target) && Target->GetTypeID() == "Obj_MagicFloor")
+	{
+		if (bIsRemovable)
+		{
+			OwnerActor->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Destroyed);
+		}
+		else
+		{
+			OwnerActor->SetActorLocation(Target->GetActorLocation());
+			OwnerActor->SetActorRotation(Target->GetActorRotation());
+
+			bIsPickedUp = false;
+			OwnerPlayer = nullptr;
+		}
+
+		return;
+	}
+
+
+	Super::DropObject();
 }
 
 
@@ -594,11 +630,13 @@ void UGBucketComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 	{
 		if (!bHasWater) return;
 
+		if (EquipComp->GetMopPollution() <= 0.0f) return;
+
 		UE_LOG(LogGObject, Log, TEXT("[Bucket] Cleaning the mop"));
 
 		if (Pollution < PollutionLV3)
 		{
-			EquipComp->AddMopPollution(-100.0f);
+			EquipComp->AddMopPollution(InteractionPollution * -1.0f);
 			AddPollution();
 		}
 		else
@@ -668,30 +706,32 @@ void UGBucketComponent::SpillFilth()
 	if (!World) return;
 
 
-	EmptyBucket();
-	if (Pollution < PollutionLV1) return;
-
-
-	// set derived filth's id by pollution level
-	FName FID = FilthTID[1];
-
-	if (Pollution >= PollutionLV3) FID = FilthTID[3];
-	else if (Pollution >= PollutionLV2) FID = FilthTID[2];
-
-
-	// spawn derived filth
-	auto* ObjectManager = World->GetSubsystem<UGObjectManager>();
-	if (ObjectManager)
+	if (Pollution >= PollutionLV1)
 	{
-		FVector SpawnLocation = GetOwner()->GetActorLocation();
-		FRotator SpawnRotation = FRotator::ZeroRotator;
+		// set derived filth's id by pollution level
+		FName FID = FilthTID[1];
 
-		ObjectManager->SpawnNonfixedObject(
-			FID,
-			ENonfixedObjState::E_Static,
-			SpawnLocation,
-			SpawnRotation);
+		if (Pollution >= PollutionLV3) FID = FilthTID[3];
+		else if (Pollution >= PollutionLV2) FID = FilthTID[2];
+
+
+		// spawn derived filth
+		auto* ObjectManager = World->GetSubsystem<UGObjectManager>();
+		if (ObjectManager)
+		{
+			FVector SpawnLocation = GetOwner()->GetActorLocation();
+			FRotator SpawnRotation = FRotator::ZeroRotator;
+
+			ObjectManager->SpawnNonfixedObject(
+				FID,
+				ENonfixedObjState::E_Static,
+				SpawnLocation,
+				SpawnRotation);
+		}
 	}
+
+
+	EmptyBucket();
 }
 
 
@@ -700,6 +740,16 @@ void UGBucketComponent::AddPollution(bool bAbPenomena)
 {
 	float AddValue = bAbPenomena ? PollutionLV3 : InteractionPollution;
 	Pollution += AddValue;
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1,                 // 메시지 키
+			5.0f,               // 표시 시간
+			FColor::Red,      // 글자 색상
+			FString::Printf(TEXT("[Water Bucket] Add pollution %f"), Pollution)
+		);
+	}
 
 	OnRep_Pollution();
 }
