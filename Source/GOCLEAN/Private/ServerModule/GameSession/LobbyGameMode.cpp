@@ -9,6 +9,7 @@
 #include "Engine/TargetPoint.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
+#include "GCharacter/GOCLEANPlayerController.h"
 
 ALobbyGameMode::ALobbyGameMode()
 {
@@ -123,6 +124,10 @@ void ALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 
 
     InitializeLobbyPlayer(NewPlayer);
+
+    // PostLogin is the first safe point for an RPC to the joining controller.
+    if (AGOCLEANPlayerController* PC = Cast<AGOCLEANPlayerController>(NewPlayer))
+        PC->Client_ShowLobbyUI();
 
 
     // PlayerArray와 로비 월드 상태가 반영된 다음 검사

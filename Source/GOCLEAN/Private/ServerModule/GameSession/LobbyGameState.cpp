@@ -20,6 +20,7 @@ void ALobbyGameState::NotifyLobbyPlayersChanged()
         return;
 
     ++LobbyRosterRevision;
+    ForceNetUpdate();
 
     // Listen Server Host는 RepNotify가 자동 호출되지 않으므로 직접 처리
     OnRep_LobbyRosterRevision();
@@ -309,4 +310,19 @@ FString ALobbyGameState::GetLobbyElapsedTimeText() const
         Minutes,
         Seconds
     );
+}
+
+void ALobbyGameState::AddPlayerState(APlayerState* PlayerState)
+{
+    const bool bAlreadyPresent = PlayerArray.Contains(PlayerState);
+    Super::AddPlayerState(PlayerState);
+    if (!bAlreadyPresent && PlayerArray.Contains(PlayerState))
+        OnLobbyPlayersChanged.Broadcast();
+}
+
+void ALobbyGameState::RemovePlayerState(APlayerState* PlayerState)
+{
+    const bool bWasPresent = PlayerArray.Contains(PlayerState);
+    Super::RemovePlayerState(PlayerState);
+    if (bWasPresent) OnLobbyPlayersChanged.Broadcast();
 }

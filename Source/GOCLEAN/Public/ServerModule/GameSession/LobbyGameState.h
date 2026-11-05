@@ -43,6 +43,8 @@ class GOCLEAN_API ALobbyGameState : public AGameSessionState
 public:
 
     ALobbyGameState();
+    virtual void AddPlayerState(APlayerState* PlayerState) override;
+    virtual void RemovePlayerState(APlayerState* PlayerState) override;
 
 
     // ============

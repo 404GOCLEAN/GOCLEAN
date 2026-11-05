@@ -16,8 +16,10 @@
 #include "GObjectSystem/Server/GObjectManager.h"
 #include "../../GOCLEAN.h"
 
-#include "Kismet/GameplayStatics.h"
+#include "GPlayerSystem\InteractionComponent.h"
 
+#include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 
 UGAdditionalObjFuncComponent::UGAdditionalObjFuncComponent()
@@ -159,6 +161,40 @@ void UGPickComponent::DropObject()
 
 	bIsPickedUp = false;
 	OwnerPlayer = nullptr;
+}
+
+void UGEXToolComponent::DropObject()
+{
+	if (!OwnerPlayer) return;
+
+	AGNonfixedObject* OwnerActor = Cast<AGNonfixedObject>(GetOwner());
+	if (!OwnerActor) return;
+
+
+	UInteractionComponent* InteractionComp = OwnerPlayer->GetInteractionComp();
+	AGFixedObject* Target = InteractionComp ?
+		Cast<AGFixedObject>(InteractionComp->GetCurrentTarget()) : nullptr;
+
+	if (IsValid(Target) && Target->GetTypeID() == "Obj_MagicFloor")
+	{
+		if (bIsRemovable)
+		{
+			OwnerActor->GetNonfixedObjCoreComp()->ChangeState(ENonfixedObjState::E_Destroyed);
+		}
+		else
+		{
+			OwnerActor->SetActorLocation(Target->GetActorLocation());
+			OwnerActor->SetActorRotation(Target->GetActorRotation());
+
+			bIsPickedUp = false;
+			OwnerPlayer = nullptr;
+		}
+
+		return;
+	}
+
+
+	Super::DropObject();
 }
 
 
@@ -518,28 +554,54 @@ void UGInteractSoundCompopnent::OnInteractionTriggered(AGOCLEANCharacter* Target
 
 
 UGBucketComponent::UGBucketComponent()
+{ 
+	// 기울기 체크를 위해 활성화
+	PrimaryComponentTick.bCanEverTick = true;
+}
+
+void UGBucketComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
-	PrimaryComponentTick.bCanEverTick = true; // 기울기 체크를 위해 활성화
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(UGBucketComponent, bHasWater);
+	DOREPLIFETIME(UGBucketComponent, Pollution);
 }
 
 void UGBucketComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	auto ObjManager = GetWorld()->GetSubsystem<UGObjectManager>();
+
+	// find water surface mesh
 	AGNonfixedObject* Owner = Cast<AGNonfixedObject>(GetOwner());
+
+	if (IsValid(Owner))
+	{
+		WaterSurface = Cast<UStaticMeshComponent>(
+			Owner->FindComponentByTag(UStaticMeshComponent::StaticClass(), FName("WaterSurface")));
+	}
+
+
+	// block logic -> only host
+	if (!Owner->HasAuthority())
+	{
+		return;
+	}
+
+
+	// register bucket 
+	auto ObjManager = GetWorld()->GetSubsystem<UGObjectManager>();
 
 	if (Owner && Owner->GetNonfixedObjCoreComp() && ObjManager)
 	{
 		ObjManager->RegisterBucketIndex(Owner->GetNonfixedObjCoreComp()->IID);
 	}
 
-	
-	bHasWater = false;
+
+	// set bucket params
+	EmptyBucket();
 
 	bIsSpilled = false;
-
-	Pollution = 0.0f;
 }
 
 void UGBucketComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -568,11 +630,13 @@ void UGBucketComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 	{
 		if (!bHasWater) return;
 
+		if (EquipComp->GetMopPollution() <= 0.0f) return;
+
 		UE_LOG(LogGObject, Log, TEXT("[Bucket] Cleaning the mop"));
 
 		if (Pollution < PollutionLV3)
 		{
-			EquipComp->AddMopPollution(-100.0f);
+			EquipComp->AddMopPollution(InteractionPollution * -1.0f);
 			AddPollution();
 		}
 		else
@@ -582,19 +646,27 @@ void UGBucketComponent::OnInteractionTriggered(AGOCLEANCharacter* Target)
 
 		// 물 튀는 효과
 	}
+
 	// type 2. 손으로 든 경우
 	else if (EquipID == "Eq_Hand")
 	{
 		UE_LOG(LogGObject, Log, TEXT("[Bucket] Pick up bucket"));
 		bIsSpilled = false;
 	}
+
 	// type 3. 
+	else
+	{
+
+	}
 }
+
 
 // water
 void UGBucketComponent::FillBucket(bool bAbPenomena)
 {
 	bHasWater = true;
+	OnRep_bHasWater();
 
 	if (bAbPenomena)
 	{
@@ -605,13 +677,12 @@ void UGBucketComponent::FillBucket(bool bAbPenomena)
 void UGBucketComponent::EmptyBucket()
 {
 	bHasWater = false;
-
-	// 물 비워지는 effect
-
-	// 물 표면 데칼 없애기
+	OnRep_bHasWater();
 
 	Pollution = 0.0f;
+	OnRep_Pollution();
 }
+
 
 // spill 
 void UGBucketComponent::CheckSpill()
@@ -635,31 +706,34 @@ void UGBucketComponent::SpillFilth()
 	if (!World) return;
 
 
-	EmptyBucket();
-	if (Pollution < PollutionLV1) return;
-
-
-	// set derived filth's id by pollution level
-	FName FID = FilthTID[1];
-
-	if (Pollution >= PollutionLV3) FID = FilthTID[3];
-	else if (Pollution >= PollutionLV2) FID = FilthTID[2];
-
-
-	// spawn derived filth
-	auto* ObjectManager = World->GetSubsystem<UGObjectManager>();
-	if (ObjectManager)
+	if (Pollution >= PollutionLV1)
 	{
-		FVector SpawnLocation = GetOwner()->GetActorLocation();
-		FRotator SpawnRotation = FRotator::ZeroRotator;
+		// set derived filth's id by pollution level
+		FName FID = FilthTID[1];
 
-		ObjectManager->SpawnNonfixedObject(
-			FID,
-			ENonfixedObjState::E_Static,
-			SpawnLocation,
-			SpawnRotation);
+		if (Pollution >= PollutionLV3) FID = FilthTID[3];
+		else if (Pollution >= PollutionLV2) FID = FilthTID[2];
+
+
+		// spawn derived filth
+		auto* ObjectManager = World->GetSubsystem<UGObjectManager>();
+		if (ObjectManager)
+		{
+			FVector SpawnLocation = GetOwner()->GetActorLocation();
+			FRotator SpawnRotation = FRotator::ZeroRotator;
+
+			ObjectManager->SpawnNonfixedObject(
+				FID,
+				ENonfixedObjState::E_Static,
+				SpawnLocation,
+				SpawnRotation);
+		}
 	}
+
+
+	EmptyBucket();
 }
+
 
 // pollution
 void UGBucketComponent::AddPollution(bool bAbPenomena)
@@ -667,6 +741,74 @@ void UGBucketComponent::AddPollution(bool bAbPenomena)
 	float AddValue = bAbPenomena ? PollutionLV3 : InteractionPollution;
 	Pollution += AddValue;
 
-	// Pollution LV에 따라 물 color 바꾸기
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1,                 // 메시지 키
+			5.0f,               // 표시 시간
+			FColor::Red,      // 글자 색상
+			FString::Printf(TEXT("[Water Bucket] Add pollution %f"), Pollution)
+		);
+	}
+
+	OnRep_Pollution();
+}
+
+
+// replication func
+void UGBucketComponent::OnRep_Pollution()
+{
+	if (!IsValid(WaterSurface))
+	{
+		return;
+	}
+
+
+	// find target material by pollution
+	UMaterialInterface* TargetMaterial = nullptr;
+
+	if (Pollution < PollutionLV1)
+	{
+		TargetMaterial = WaterMaterial_Clean;
+	}
+	else if (Pollution < PollutionLV2)
+	{
+		TargetMaterial = WaterMaterial_PollutionLV1;
+	}
+	else if (Pollution < PollutionLV3)
+	{
+		TargetMaterial = WaterMaterial_PollutionLV2;
+	}
+	else
+	{
+		TargetMaterial = WaterMaterial_PollutionLV3;
+	}
+
+
+	// change water surface's material
+	if (IsValid(TargetMaterial))
+	{
+		WaterSurface->SetMaterial(0, TargetMaterial);
+	}
+}
+
+void UGBucketComponent::OnRep_bHasWater()
+{
+	if (!IsValid(WaterSurface))
+	{
+		return;
+	}
+
+
+	if (bHasWater)
+	{
+		// effect
+	}
+	else
+	{
+		// effect
+	}
+
+	WaterSurface->SetVisibility(bHasWater);
 }
 

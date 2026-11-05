@@ -57,6 +57,8 @@ void AInGameGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
     DOREPLIFETIME(AInGameGameState, FinalRewardMoney);
 
     DOREPLIFETIME(AInGameGameState, VendingStocks);
+
+    DOREPLIFETIME(AInGameGameState, bGameSuccessful);
 }
 
 
@@ -120,6 +122,17 @@ void AInGameGameState::SetExorcismState(EExorcismState NewState)
 
     ExorcismState = NewState;
 
+
+    if (ExorcismState == EExorcismState::InProgress)
+    {
+        auto* ObjManager = GetWorld()->GetSubsystem<UGObjectManager>();
+        if (IsValid(ObjectManager))
+        {
+            ObjManager->ActivateExocismCircle(nullptr);
+        }
+    }
+
+
     OnRep_ExorcismState();
 }
 
@@ -128,19 +141,44 @@ void AInGameGameState::SetExorcismState(EExorcismState NewState)
 // Gauge
 // ===========
 
+// [lkh Add] 2026-10-14
+void AInGameGameState::SetInitialSpiritualGauge(float NewValue)
+{
+    if (!HasAuthority())
+        return;
+
+    InitialSpiritualGauge = NewValue;
+
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(
+            -1,                 // 메시지 키
+            5.0f,               // 표시 시간
+            FColor::Purple,      // 글자 색상
+            FString::Printf(TEXT("[Spiritual Gauge] Initial Spiritual Gauge %f"), InitialSpiritualGauge)
+        );
+    }
+
+    SetSpiritualGauge(InitialSpiritualGauge);
+}
+
 void AInGameGameState::SetSpiritualGauge(float NewValue)
 {
     if (!HasAuthority())
         return;
 
-    const float Clamped = FMath::Clamp(NewValue, 0.f, 100.f);
-
-    if (FMath::IsNearlyEqual(SpiritualGauge, Clamped))
+    // [lkh Edit] 2026-10-14 
     {
-        return;
+        if (NewValue < 0.0f)
+        {
+            AddRestGauge(NewValue * -1.0f);
+            SpiritualGauge = 0.0f;
+        }
+        else
+        {
+            SpiritualGauge = NewValue;
+        }
     }
-
-    SpiritualGauge = Clamped;
 
     OnRep_SpiritualGauge();
 }
@@ -467,6 +505,21 @@ void AInGameGameState::SetFinalRewardMoney(int32 NewMoney)
 
     OnRep_FinalRewardMoney();
 }
+
+
+
+// ============
+// Result
+// ===========
+
+void AInGameGameState::SetGameSuccessful(bool bSuccess)
+{
+    if (!HasAuthority())
+        return;
+
+    bGameSuccessful = bSuccess;
+}
+
 
 
 // ============

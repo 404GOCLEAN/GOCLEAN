@@ -159,6 +159,16 @@ public:
         return RestGauge;
     }
 
+    // [lkh Add] 2026-10-14
+    UFUNCTION(BlueprintPure, Category = "InGame|Gauge")
+    float GetRemainingSpiritualGaugePercent() const
+    {
+        return SpiritualGauge/InitialSpiritualGauge * 100.0f;
+    }
+
+
+    // [lkh Add] 2026-10-14
+    void SetInitialSpiritualGauge(float NewValue);
 
     void SetSpiritualGauge(float NewValue);
 
@@ -272,6 +282,18 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "InGame|Vending")
     FOnInGameVendingStockChanged OnInGameVendingStockChanged;
 
+    // =================
+    // Result
+    // =================
+
+    UFUNCTION(BlueprintPure, Category = "InGame|Result")
+    bool WasGameSuccessful() const
+    {
+        return bGameSuccessful;
+    }
+
+    void SetGameSuccessful(bool bSuccess);
+
 protected:
 
     virtual void GetLifetimeReplicatedProps( TArray<FLifetimeProperty>& OutLifetimeProps ) const override;
@@ -378,6 +400,11 @@ private:
     EExorcismState ExorcismState = EExorcismState::None;
 
 
+    // [lkh Add] 2026-10-14
+    UPROPERTY(Replicated)
+    float InitialSpiritualGauge = 100.f;
+
+
     UPROPERTY(ReplicatedUsing = OnRep_SpiritualGauge)
     float SpiritualGauge = 100.f;
 
@@ -408,4 +435,12 @@ private:
 
     UPROPERTY(ReplicatedUsing = OnRep_VendingStocks, BlueprintReadOnly, Category = "InGame|Vending", meta = (AllowPrivateAccess = "true"))
     TArray<FInGameVendingStock> VendingStocks;
+
+
+    // =================
+    // Result
+    // =================
+
+    UPROPERTY(Replicated)
+    bool bGameSuccessful = false;
 };

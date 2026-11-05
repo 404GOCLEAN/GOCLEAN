@@ -1,6 +1,6 @@
 #include "GCharacter/GOCLEANPlayerController.h"
-#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "EnhancedInputComponent.h"
 #include "Engine/LocalPlayer.h"
 
 #include "Net/RpcTypes.h"
@@ -8,24 +8,33 @@
 
 #include "ServerModule/Sound/AmbientAudioManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
+#include "ServerModule/GameSession/LobbyGameState.h"
+#include "ServerModule/GameSession/PlayerSessionState.h"
+#include "UObject/ConstructorHelpers.h"
+#include "TimerManager.h"
+
+#include "ServerModule/GameSession/GameSessionInstance.h"
 
 AGOCLEANPlayerController::AGOCLEANPlayerController()
 {
-	RPCRouter = CreateDefaultSubobject<URPCRouterComponent>(TEXT("RPCRouter"));
+    RPCRouter = CreateDefaultSubobject<URPCRouterComponent>(TEXT("RPCRouter"));
+    static ConstructorHelpers::FClassFinder<UUserWidget> LobbyUI(
+        TEXT("/Game/Hyeona/Widgets/WBP_LobbyMainWidget"));
+    if (LobbyUI.Succeeded()) LobbyWidgetClass = LobbyUI.Class;
 }
 
 
 void AGOCLEANPlayerController::BeginPlay()
 {
-	Super::BeginPlay();
-
-	// get the enhanced input subsystem
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
-	{
-		// add the mapping context so we get controls
-		Subsystem->AddMappingContext(InputMappingContext, 0);
-	}
-
+    Super::BeginPlay();
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
+        ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        if (InputMappingContext) Subsystem->AddMappingContext(InputMappingContext, 0);
+    }
+    if (IsLocalController() && UGameplayStatics::GetCurrentLevelName(this, true) == TEXT("test_Lobby"))
+        ShowLobbyUI();
 }
 
 void AGOCLEANPlayerController::ShowTitleUI()
@@ -52,24 +61,49 @@ void AGOCLEANPlayerController::ShowTitleUI()
 
 void AGOCLEANPlayerController::ShowLobbyUI()
 {
+    if (!IsLocalController() || !GetWorld()) return;
+    if (UGameplayStatics::GetCurrentLevelName(this, true) != TEXT("test_Lobby")) return;
 
-    if (CurrentWidget)
+    const APlayerSessionState* PSS = GetPlayerState<APlayerSessionState>();
+    // Construct the widget only after its replicated data sources exist locally.
+    if (!GetWorld()->GetGameState<ALobbyGameState>() || !PSS || PSS->GetSeatIndex() == INDEX_NONE)
     {
-        CurrentWidget->RemoveFromParent();
-        CurrentWidget = nullptr;
+        if (++LobbyUIRetryCount <= 200)
+            GetWorldTimerManager().SetTimer(LobbyUIRetryTimer, this,
+                &AGOCLEANPlayerController::ShowLobbyUI, 0.1f, false);
+        else
+            UE_LOG(LogTemp, Warning, TEXT("[LobbyUI] Timed out waiting for local PlayerState/GameState"));
+        return;
     }
+    if (!LobbyWidgetClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[LobbyUI] LobbyWidgetClass is not configured"));
+        return;
+    }
+    GetWorldTimerManager().ClearTimer(LobbyUIRetryTimer);
+    LobbyUIRetryCount = 0;
+    if (IsValid(CurrentWidget) && CurrentWidget->IsA(LobbyWidgetClass) && CurrentWidget->IsInViewport())
+        return;
 
-    if (!LobbyWidgetClass) return;
-
+    // Replace any early Blueprint-created lobby widget so Construct can bind valid state.
+    TArray<UUserWidget*> ExistingWidgets;
+    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, ExistingWidgets, LobbyWidgetClass, true);
+    for (UUserWidget* Widget : ExistingWidgets)
+    {
+        if (IsValid(Widget) && Widget->GetWorld() == GetWorld() &&
+            (!Widget->GetOwningPlayer() || Widget->GetOwningPlayer() == this))
+            Widget->RemoveFromParent();
+    }
+    if (IsValid(CurrentWidget)) CurrentWidget->RemoveFromParent();
     CurrentWidget = CreateWidget<UUserWidget>(this, LobbyWidgetClass);
-    if (CurrentWidget)
-    {
-        CurrentWidget->AddToViewport();
-
-        bShowMouseCursor = true;
-        FInputModeUIOnly Mode;
-        SetInputMode(Mode);
-    }
+    if (!CurrentWidget) return;
+    CurrentWidget->AddToViewport();
+    bShowMouseCursor = true;
+    FInputModeUIOnly Mode;
+    Mode.SetWidgetToFocus(CurrentWidget->TakeWidget());
+    SetInputMode(Mode);
+    UE_LOG(LogTemp, Log, TEXT("[LobbyUI] Created for %s Seat=%d Nickname=%s"),
+        *GetName(), PSS->GetSeatIndex(), *PSS->GetNickname());
 }
 
 void AGOCLEANPlayerController::ShowResultUI()
@@ -88,7 +122,9 @@ void AGOCLEANPlayerController::ShowResultUI()
         CurrentWidget->AddToViewport();
 
         bShowMouseCursor = true;
+
         FInputModeUIOnly Mode;
+        Mode.SetWidgetToFocus(CurrentWidget->TakeWidget());
         SetInputMode(Mode);
     }
 }
@@ -138,7 +174,7 @@ void AGOCLEANPlayerController::RequestTakeVendingItem(int32 ItemId)
 
 void AGOCLEANPlayerController::EnsureVendingWidget()
 {
-    if (!IsLocalController()) return; 
+    if (!IsLocalController()) return;
     if (VendingWidget) return;
     if (!VendingWidgetClass) return;
 
@@ -193,6 +229,18 @@ void AGOCLEANPlayerController::ToggleVendingUI()
     }
 }
 
+void AGOCLEANPlayerController::OnRep_PlayerState()
+{
+    Super::OnRep_PlayerState();
+    if (IsLocalController() && UGameplayStatics::GetCurrentLevelName(this, true) == TEXT("test_Lobby"))
+        ShowLobbyUI();
+}
+
+void AGOCLEANPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (GetWorld()) GetWorldTimerManager().ClearTimer(LobbyUIRetryTimer);
+    Super::EndPlay(EndPlayReason);
+}
 
 
 // Additional Input //
@@ -282,4 +330,17 @@ void AGOCLEANPlayerController::ShowSpectatorUI()
         FInputModeGameOnly Mode;
         SetInputMode(Mode);
     }
+}
+
+void AGOCLEANPlayerController::ReturnToTitle()
+{
+    if (!IsLocalController())
+        return;
+
+    UGameSessionInstance* GI = GetGameInstance<UGameSessionInstance>();
+
+    if (!GI)
+        return;
+
+    GI->ReturnToTitle();
 }

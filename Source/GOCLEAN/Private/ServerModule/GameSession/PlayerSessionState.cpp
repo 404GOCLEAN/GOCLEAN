@@ -5,6 +5,21 @@
 #include "ServerModule/GameSession/GameSessionMode.h"
 #include "ServerModule/GameSession/LobbyGameMode.h"
 #include <Net/UnrealNetwork.h>
+#include "ServerModule/GameSession/LobbyGameState.h"
+
+namespace
+{
+void BroadcastLobbyPlayerInfoChanged(APlayerSessionState* Player)
+{
+    Player->OnLobbyPlayerInfoChanged.Broadcast();
+    if (Player->HasAuthority()) Player->ForceNetUpdate();
+    if (UWorld* World = Player->GetWorld())
+    {
+        if (ALobbyGameState* Lobby = World->GetGameState<ALobbyGameState>())
+            Lobby->OnLobbyPlayersChanged.Broadcast();
+    }
+}
+}
 
 //APlayerSessionState::APlayerSessionState()
 //{
@@ -502,7 +517,7 @@ void APlayerSessionState::OnRep_SeatIndex()
 {
     BP_OnSeatIndexChanged(SeatIndex);
 
-    OnLobbyPlayerInfoChanged.Broadcast();
+    BroadcastLobbyPlayerInfoChanged(this);
 }
 
 
@@ -510,13 +525,14 @@ void APlayerSessionState::OnRep_Nickname()
 {
     BP_OnNicknameChanged(Nickname);
 
-    OnLobbyPlayerInfoChanged.Broadcast();
+    BroadcastLobbyPlayerInfoChanged(this);
 }
 
 
 void APlayerSessionState::OnRep_IsHost()
 {
     BP_OnHostChanged(bIsHost);
+    BroadcastLobbyPlayerInfoChanged(this);
 }
 
 
@@ -528,13 +544,14 @@ void APlayerSessionState::OnRep_CharacterType()
 {
     BP_OnCharacterTypeChanged(CharacterType);
 
-    OnLobbyPlayerInfoChanged.Broadcast();
+    BroadcastLobbyPlayerInfoChanged(this);
 }
 
 
 void APlayerSessionState::OnRep_Gender()
 {
     BP_OnGenderChanged(Gender);
+    BroadcastLobbyPlayerInfoChanged(this);
 }
 
 
@@ -546,13 +563,14 @@ void APlayerSessionState::OnRep_Ready()
 {
     BP_OnReadyChanged(bIsReady);
 
-    OnLobbyPlayerInfoChanged.Broadcast();
+    BroadcastLobbyPlayerInfoChanged(this);
 }
 
 
 void APlayerSessionState::OnRep_LoadState()
 {
     BP_OnLoadStateChanged(LoadState);
+    BroadcastLobbyPlayerInfoChanged(this);
 }
 
 
