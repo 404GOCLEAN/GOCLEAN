@@ -192,11 +192,18 @@ private:
     void HandleDestroySessionComplete(FName SessionName, bool bWasSuccessful);
 
     void OpenTitleMap();
+    void BeginSessionCleanup(bool bOpenTitleAfterCleanup);
+    void TryDestroySession();
+    void FinishSessionCleanup();
+    void ClearSessionCleanupDelegate();
+    void RetrySessionCleanup();
 
     FDelegateHandle DestroySessionDelegateHandle;
 
     IOnlineSessionPtr SessionInterfaceForCleanup;
 
     bool bReturningToTitle = false;
+    bool bOpenTitleAfterSessionCleanup = false;
+    FTimerHandle SessionCleanupRetryTimer;
 
 };

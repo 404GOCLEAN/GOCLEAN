@@ -250,7 +250,7 @@ private:
 
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Vivox|3D",
         meta = (AllowPrivateAccess = "true", ClampMin = "1"))
-    int32 InGameAudibleDistance = 2700;
+    int32 InGameAudibleDistance = 2300;
 
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Vivox|3D",
         meta = (AllowPrivateAccess = "true", ClampMin = "1"))
