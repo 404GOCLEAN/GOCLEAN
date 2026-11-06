@@ -276,21 +276,6 @@ private:
 	bool bIsSprinting;
 
 
-
-	// Anim ID //
-	UPROPERTY(VisibleAnywhere, ReplicatedUsing = "OnRep_AnimID")
-	int32 AnimID;
-
-	UFUNCTION()
-	void OnRep_AnimID();
-
-	UFUNCTION(BlueprintCallable)
-	void SetAnimID(int32 NewID) { AnimID = NewID; }
-
-	UFUNCTION(BlueprintPure)
-	int32 GetAnimID() { return AnimID; }
-
-
 	// Equipment // 
 	UPROPERTY(VisibleAnywhere, Replicated)
 	TObjectPtr<UGEquipmentComponent> EquipComp;
@@ -306,6 +291,7 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input Actions")
 	TObjectPtr<UInputAction> ChangeSlotAction_Slot4;
+
 
 
 	// Interaction // 
@@ -332,8 +318,41 @@ public:
 	USceneComponent* GetHandMesh() const { return FirstPersonMeshComp; }
 
 	void SetHeldObjectRelativeTransform(class AGNonfixedObject* NewObj);
-	
 
+
+
+	// Cabinet //
 private:
+	UPROPERTY(VisibleAnywhere, Replicated)
+	bool bIsInCabinet = false;
+
+public:
+	UFUNCTION(BlueprintCallable)
+	bool IsInCabinet() const { return bIsInCabinet; }
+
+	UFUNCTION(BlueprintCallable)
+	void EnterCabinet();
+
+	UFUNCTION(BlueprintCallable)
+	void ExitCabinet();
+
+
+
+	// Anim ID //
+private:
+	UPROPERTY(VisibleAnywhere, ReplicatedUsing = "OnRep_AnimID")
+	int32 AnimID;
+
+	UFUNCTION()
+	void OnRep_AnimID();
+
+	UFUNCTION(BlueprintCallable)
+	void SetAnimID(int32 NewID) { AnimID = NewID; }
+
+	UFUNCTION(BlueprintPure)
+	int32 GetAnimID() { return AnimID; }
+
+
 	float LastSentAimPitch = 0.f;
+
 };

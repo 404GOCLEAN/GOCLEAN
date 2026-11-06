@@ -1,5 +1,6 @@
 #include "GCharacter/GOCLEANPlayerController.h"
 #include "EnhancedInputSubsystems.h"
+#include "EnhancedInputComponent.h"
 #include "Engine/LocalPlayer.h"
 
 #include "Net/RpcTypes.h"
@@ -13,9 +14,11 @@
 #include "UObject/ConstructorHelpers.h"
 #include "TimerManager.h"
 
+#include "ServerModule/GameSession/GameSessionInstance.h"
+
 AGOCLEANPlayerController::AGOCLEANPlayerController()
 {
-	RPCRouter = CreateDefaultSubobject<URPCRouterComponent>(TEXT("RPCRouter"));
+    RPCRouter = CreateDefaultSubobject<URPCRouterComponent>(TEXT("RPCRouter"));
     static ConstructorHelpers::FClassFinder<UUserWidget> LobbyUI(
         TEXT("/Game/Hyeona/Widgets/WBP_LobbyMainWidget"));
     if (LobbyUI.Succeeded()) LobbyWidgetClass = LobbyUI.Class;
@@ -119,7 +122,9 @@ void AGOCLEANPlayerController::ShowResultUI()
         CurrentWidget->AddToViewport();
 
         bShowMouseCursor = true;
+
         FInputModeUIOnly Mode;
+        Mode.SetWidgetToFocus(CurrentWidget->TakeWidget());
         SetInputMode(Mode);
     }
 }
@@ -169,7 +174,7 @@ void AGOCLEANPlayerController::RequestTakeVendingItem(int32 ItemId)
 
 void AGOCLEANPlayerController::EnsureVendingWidget()
 {
-    if (!IsLocalController()) return; 
+    if (!IsLocalController()) return;
     if (VendingWidget) return;
     if (!VendingWidgetClass) return;
 
@@ -235,4 +240,107 @@ void AGOCLEANPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     if (GetWorld()) GetWorldTimerManager().ClearTimer(LobbyUIRetryTimer);
     Super::EndPlay(EndPlayReason);
+}
+
+
+// Additional Input //
+
+// IA
+void AGOCLEANPlayerController::SetupInputComponent()
+{
+    Super::SetupInputComponent();
+
+    if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
+    {
+        EnhancedInputComponent->BindAction(IA_SwitchPlayer,
+            ETriggerEvent::Started,
+            this,
+            &AGOCLEANPlayerController::SwitchSpectatorTarget);
+    }
+}
+
+void AGOCLEANPlayerController::SwitchSpectatorTarget()
+{
+    // 관전 중인 플레이어를 변경
+}
+
+
+// IMC
+void AGOCLEANPlayerController::SwitchToDefaultIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (InputMappingContext)
+        {
+            Subsystem->AddMappingContext(InputMappingContext, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+void AGOCLEANPlayerController::SwitchToCabinetIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (IMC_Cabinet)
+        {
+            Subsystem->AddMappingContext(IMC_Cabinet, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+void AGOCLEANPlayerController::SwitchToSpectatorIMC()
+{
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+    {
+        Subsystem->ClearAllMappings();
+
+        if (IMC_Spectator)
+        {
+            Subsystem->AddMappingContext(IMC_Spectator, 0);
+            UE_LOG(LogTemp, Log, TEXT("Change IMC : Spectator"));
+        }
+    }
+}
+
+
+// Spectator UI
+void AGOCLEANPlayerController::ShowSpectatorUI()
+{
+    // 기존 위젯 제거
+    if (CurrentWidget)
+    {
+        CurrentWidget->RemoveFromParent();
+        CurrentWidget = nullptr;
+    }
+
+    if (!SpectatorWidgetClass) return;
+
+    CurrentWidget = CreateWidget<UUserWidget>(this, SpectatorWidgetClass);
+    if (CurrentWidget)
+    {
+        CurrentWidget->AddToViewport();
+
+        bShowMouseCursor = false;
+        FInputModeGameOnly Mode;
+        SetInputMode(Mode);
+    }
+}
+
+void AGOCLEANPlayerController::ReturnToTitle()
+{
+    if (!IsLocalController())
+        return;
+
+    UGameSessionInstance* GI = GetGameInstance<UGameSessionInstance>();
+
+    if (!GI)
+        return;
+
+    GI->ReturnToTitle();
 }

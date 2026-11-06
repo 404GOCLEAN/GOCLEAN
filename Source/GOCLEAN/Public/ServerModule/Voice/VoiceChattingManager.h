@@ -39,7 +39,7 @@ enum class EVoiceChannelMode : uint8
  *  -> 현재 Pawn을 다시 찾아 3D Position Update 시작
  */
 
-UCLASS()
+UCLASS(Config=Game)
 class GOCLEAN_API UVoiceChattingManager : public UGameInstanceSubsystem
 {
     GENERATED_BODY()
@@ -51,6 +51,9 @@ public:
     ) override;
 
     virtual void Deinitialize() override;
+
+    UFUNCTION(BlueprintCallable, Category = "Vivox|3D")
+    void Vivox_SetInGameVoiceGain(int32 Gain);
 
     FString GetLocalVoicePlayerId();
     void HandleWorldChanged(UWorld* World);
@@ -238,6 +241,31 @@ private:
     TWeakObjectPtr<UWorld> VoiceTimerWorld;
     FDelegateHandle ChannelStateChangedHandle;
     FDelegateHandle AudioStateChangedHandle;
+    FDelegateHandle ParticipantAddedHandle;
+
+    // Distance values use Unreal world units (centimeters).
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Vivox|3D",
+        meta = (AllowPrivateAccess = "true", ClampMin = "-50", ClampMax = "50"))
+    int32 InGameVoiceGain = 6;
+
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Vivox|3D",
+        meta = (AllowPrivateAccess = "true", ClampMin = "1"))
+    int32 InGameAudibleDistance = 2700;
+
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Vivox|3D",
+        meta = (AllowPrivateAccess = "true", ClampMin = "1"))
+    int32 InGameConversationalDistance = 90;
+
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Vivox|3D",
+        meta = (AllowPrivateAccess = "true", ClampMin = "0.001"))
+    float InGameAudioFadeIntensity = 1.0f;
+
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Vivox|3D",
+        meta = (AllowPrivateAccess = "true"))
+    EAudioFadeModel InGameAudioFadeModel = EAudioFadeModel::InverseByDistance;
+
+    void ApplyInGameVoiceGain();
+    void HandleParticipantAdded(const IParticipant& Participant);
 
     void ClearChannelCallbacks();
     void HandleChannelStateChanged(const IChannelConnectionState& State);

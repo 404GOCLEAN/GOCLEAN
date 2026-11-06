@@ -366,8 +366,12 @@ void UVoiceChattingManager::Vivox_JoinVoice(const FString& ChannelName, bool bPo
         return;
     }
     ILoginSession& Login = VivoxVoiceClient->GetLoginSession(LoggedInUserId);
+    const int32 AudibleDistance = FMath::Max(1, InGameAudibleDistance);
+    const Channel3DProperties Properties(AudibleDistance,
+        FMath::Clamp(InGameConversationalDistance, 1, AudibleDistance),
+        FMath::Max(0.001f, InGameAudioFadeIntensity), InGameAudioFadeModel);
     JoinedChannel = ChannelId(VIVOX_VOICE_ISSUER, ChannelName, VIVOX_VOICE_DOMAIN,
-        bPositional ? ChannelType::Positional : ChannelType::NonPositional);
+        bPositional ? ChannelType::Positional : ChannelType::NonPositional, Properties);
     CurrentVoiceChannelName = ChannelName;
     bCurrentChannelPositional = bPositional;
     bHasChannelSession = true;
@@ -378,6 +382,8 @@ void UVoiceChattingManager::Vivox_JoinVoice(const FString& ChannelName, bool bPo
         &UVoiceChattingManager::HandleChannelStateChanged);
     AudioStateChangedHandle = Session.EventAudioStateChanged.AddUObject(this,
         &UVoiceChattingManager::HandleAudioStateChanged);
+    ParticipantAddedHandle = Session.EventAfterParticipantAdded.AddUObject(this,
+        &UVoiceChattingManager::HandleParticipantAdded);
     IChannelSession::FOnBeginConnectCompletedDelegate Done;
     const TWeakObjectPtr<UVoiceChattingManager> WeakThis(this);
     const ChannelId RequestedChannel = JoinedChannel;
@@ -1344,8 +1350,10 @@ void UVoiceChattingManager::ClearChannelCallbacks()
     IChannelSession& Session = VivoxVoiceClient->GetLoginSession(LoggedInUserId).GetChannelSession(JoinedChannel);
     Session.EventChannelStateChanged.Remove(ChannelStateChangedHandle);
     Session.EventAudioStateChanged.Remove(AudioStateChangedHandle);
+    Session.EventAfterParticipantAdded.Remove(ParticipantAddedHandle);
     ChannelStateChangedHandle.Reset();
     AudioStateChangedHandle.Reset();
+    ParticipantAddedHandle.Reset();
 }
 
 void UVoiceChattingManager::HandleChannelStateChanged(const IChannelConnectionState& State)
@@ -1390,6 +1398,7 @@ void UVoiceChattingManager::MarkChannelAudioConnected()
 {
     const bool bFirstConnection = !bHasJoinedChannel;
     bHasJoinedChannel = true;
+    if (bFirstConnection) ApplyInGameVoiceGain();
     bChannelConnectInProgress = false;
     StartVoiceCacheTimer();
     PushVoiceCacheToGameInstance();
@@ -1400,4 +1409,41 @@ void UVoiceChattingManager::MarkChannelAudioConnected()
         Vivox_TryAutoStart3DUpdate();
     else
         Vivox_Stop3DUpdate();
+}
+
+
+void UVoiceChattingManager::Vivox_SetInGameVoiceGain(int32 Gain)
+{
+    InGameVoiceGain = FMath::Clamp(Gain, -50, 50);
+    ApplyInGameVoiceGain();
+}
+
+void UVoiceChattingManager::HandleParticipantAdded(const IParticipant& Participant)
+{
+    if (!Participant.IsSelf()) ApplyInGameVoiceGain();
+}
+
+void UVoiceChattingManager::ApplyInGameVoiceGain()
+{
+    if (bShuttingDown || !VivoxVoiceClient || !bHasJoinedChannel || !bCurrentChannelPositional) return;
+    IChannelSession& Session = VivoxVoiceClient->GetLoginSession(LoggedInUserId).GetChannelSession(JoinedChannel);
+    const int32 Gain = FMath::Clamp(InGameVoiceGain, -50, 50);
+    for (const auto& Entry : Session.Participants())
+    {
+        IParticipant* Participant = Entry.Value;
+        if (!Participant || Participant->IsSelf() || Participant->LocalVolumeAdjustment() == Gain) continue;
+        IParticipantProperties::FOnBeginSetLocalVolumeAdjustmentCompletedDelegate Done;
+        const TWeakObjectPtr<UVoiceChattingManager> WeakThis(this);
+        Done.BindLambda([WeakThis](VivoxCoreError Error)
+        {
+            if (UVoiceChattingManager* Self = WeakThis.Get())
+            {
+                if (!Self->bShuttingDown && Error != 0)
+                    Self->Vivox_ScreenLog(FString::Printf(TEXT("[Vivox] Voice gain failed Error=%d"), int32(Error)), FColor::Red);
+            }
+        });
+        const VivoxCoreError Error = Participant->BeginSetLocalVolumeAdjustment(Gain, Done);
+        if (Error != 0)
+            Vivox_ScreenLog(FString::Printf(TEXT("[Vivox] Voice gain rejected Error=%d"), int32(Error)), FColor::Red);
+    }
 }

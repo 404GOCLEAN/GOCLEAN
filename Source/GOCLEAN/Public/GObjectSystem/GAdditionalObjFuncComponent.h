@@ -15,6 +15,9 @@ class AGOCLEANCharacter;
 class AGNonfixedObject;
 class AGFixedObject;
 
+class UStaticMeshComponent;
+class UMaterialInterface;
+
 
 UCLASS(Abstract, Blueprintable)
 class GOCLEAN_API UGAdditionalObjFuncComponent : public UActorComponent
@@ -51,8 +54,7 @@ public:
 
 	virtual void InitializeAdditionalData(const FGNonfixedObjData& Data) override;
 
-	UFUNCTION()
-	void DropObject();
+	virtual void DropObject();
 
 
 protected:
@@ -68,7 +70,6 @@ protected:
 	void PickUpObject(AGOCLEANCharacter* Target);
 
 
-private:
 	UPROPERTY(VisibleAnywhere)
 	bool bIsPickedUp = false;
 
@@ -76,6 +77,47 @@ private:
 	AGOCLEANCharacter* OwnerPlayer;
 
 };
+
+
+UCLASS(Blueprintable, meta = (BlueprintSpawnableComponent))
+class GOCLEAN_API UGEXToolComponent : public UGPickComponent
+{
+	GENERATED_BODY()
+
+
+public:
+	UGEXToolComponent() {}
+
+	virtual void InitializeAdditionalData(const FGNonfixedObjData& Data) override
+	{
+		Super::InitializeAdditionalData(Data);
+	}
+
+	virtual void DropObject() override;
+
+
+	UPROPERTY(EditAnywhere)
+	bool bIsRemovable = false;
+
+
+protected:
+	virtual void BeginPlay() override
+	{
+		Super::BeginPlay();
+	}
+
+	virtual void OnInteractionTriggered(AGOCLEANCharacter* Target) override
+	{
+		Super::OnInteractionTriggered(Target);
+	}
+
+	virtual void OnStateChangeTriggered(ENonfixedObjState PrevState, ENonfixedObjState ChangedState) override
+	{
+		Super::OnStateChangeTriggered(PrevState, ChangedState);
+	}
+
+};
+
 
 
 UCLASS(Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -268,24 +310,32 @@ class GOCLEAN_API UGBucketComponent : public UGAdditionalObjFuncComponent
 public:
 	UGBucketComponent();
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	virtual void OnInteractionTriggered(class AGOCLEANCharacter* Target) override;
 
+	virtual void OnStateChangeTriggered(ENonfixedObjState PrevState, ENonfixedObjState ChangedState) override {};
+
 
 public:
 	void FillBucket(bool bAbPenomena = false);
+
 	void EmptyBucket();
+
 
 private:
 	// water
+	UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_bHasWater, Category = "Bucket")
 	bool bHasWater = false;
 
 
 	// spill
 	void CheckSpill();
+
 	void SpillFilth();
 
 	UPROPERTY(EditAnywhere, Category = "Bucket")
@@ -297,8 +347,9 @@ private:
 	// pollution
 	void AddPollution(bool bAbPenomena = false);
 
-	UPROPERTY(EditAnywhere, Category = "Bucket")
+	UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_Pollution, Category = "Bucket")
 	float Pollution;
+
 
 	UPROPERTY(EditAnywhere, Category = "Bucket")
 	float InteractionPollution = 5.0f;
@@ -320,5 +371,32 @@ private:
 		{2, "Obj_Blood2"},
 		{3, "Obj_Blood3"}
 	};
+
+
+	// decal
+	UPROPERTY(VisibleAnywhere, Category = "Water|Surface")
+	TObjectPtr<UStaticMeshComponent> WaterSurface;
+
+
+	// 오염도 단계별 머티리얼
+	UPROPERTY(EditAnywhere, Category = "Water|Materials")
+	TObjectPtr<UMaterialInterface> WaterMaterial_Clean;
+
+	UPROPERTY(EditAnywhere, Category = "Water|Materials")
+	TObjectPtr<UMaterialInterface> WaterMaterial_PollutionLV1;
+
+	UPROPERTY(EditAnywhere, Category = "Water|Materials")
+	TObjectPtr<UMaterialInterface> WaterMaterial_PollutionLV2;
+
+	UPROPERTY(EditAnywhere, Category = "Water|Materials")
+	TObjectPtr<UMaterialInterface> WaterMaterial_PollutionLV3;
+
+
+	// replication function
+	UFUNCTION()
+	void OnRep_bHasWater();
+
+	UFUNCTION()
+	void OnRep_Pollution();
 
 };

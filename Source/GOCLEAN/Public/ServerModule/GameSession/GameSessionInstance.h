@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
+#include "Interfaces/OnlineSessionInterface.h"
 #include "GameSessionInstance.generated.h"
 
 /**
@@ -181,5 +182,21 @@ private:
     // 로비에서 선택된 최대 5종의 VendingItemId
     UPROPERTY()
     TArray<int32> PendingVendingItemIds;
+
+
+public:
+    UFUNCTION(BlueprintCallable, Category = "Session")
+    void ReturnToTitle();
+
+private:
+    void HandleDestroySessionComplete(FName SessionName, bool bWasSuccessful);
+
+    void OpenTitleMap();
+
+    FDelegateHandle DestroySessionDelegateHandle;
+
+    IOnlineSessionPtr SessionInterfaceForCleanup;
+
+    bool bReturningToTitle = false;
 
 };

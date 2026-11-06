@@ -255,3 +255,101 @@ void UGameSessionInstance::ClearPendingJoinCode()
 {
     PendingJoinCode.Empty();
 }
+
+void UGameSessionInstance::ReturnToTitle()
+{
+    if (bReturningToTitle)
+        return;
+
+    bReturningToTitle = true;
+
+    UE_LOG(LogTemp, Warning, TEXT("[Session] Returning to Title"));
+
+    // 1. 음성 채널 퇴장
+    UVoiceChattingManager* VoiceManager = GetSubsystem<UVoiceChattingManager>();
+
+    if (VoiceManager)
+    {
+        VoiceManager->Vivox_LeaveVoice();
+    }
+
+    // 2. 세션 정보 정리
+    ClearPendingJoinCode();
+    ClearPendingVendingItemIds();
+    SetPendingContractId(0);
+
+    // 3. Steam 세션 종료
+    SessionInterfaceForCleanup = Online::GetSessionInterface(GetWorld());
+
+    if (!SessionInterfaceForCleanup.IsValid() || !SessionInterfaceForCleanup->GetNamedSession(NAME_GameSession))
+    {
+        OpenTitleMap();
+        return;
+    }
+
+    DestroySessionDelegateHandle =
+        SessionInterfaceForCleanup->
+        AddOnDestroySessionCompleteDelegate_Handle(
+            FOnDestroySessionCompleteDelegate::CreateUObject(
+                this,
+                &UGameSessionInstance::HandleDestroySessionComplete
+            )
+        );
+
+    if (!SessionInterfaceForCleanup->DestroySession(NAME_GameSession))
+    {
+        SessionInterfaceForCleanup->
+            ClearOnDestroySessionCompleteDelegate_Handle(
+                DestroySessionDelegateHandle
+            );
+
+        UE_LOG(LogTemp, Error, TEXT("[Session] Failed to start DestroySession"));
+
+        bReturningToTitle = false;
+    }
+}
+
+void UGameSessionInstance::HandleDestroySessionComplete(FName SessionName, bool bWasSuccessful)
+{
+    if (SessionInterfaceForCleanup.IsValid())
+    {
+        SessionInterfaceForCleanup->
+            ClearOnDestroySessionCompleteDelegate_Handle(
+                DestroySessionDelegateHandle
+            );
+    }
+
+    SessionInterfaceForCleanup.Reset();
+
+    UE_LOG(LogTemp, Warning,
+        TEXT("[Session] Destroy completed: %s"),
+        bWasSuccessful ? TEXT("Success") : TEXT("Failed"));
+
+    if (!bWasSuccessful)
+    {
+        bReturningToTitle = false;
+        return;
+    }
+
+    OpenTitleMap();
+}
+
+void UGameSessionInstance::OpenTitleMap()
+{
+    UWorld* World = GetWorld();
+
+    if (!World)
+    {
+        bReturningToTitle = false;
+        return;
+    }
+
+    // 타이틀 맵으로 로컬 이동
+    UGameplayStatics::OpenLevel(
+        World,
+        FName(TEXT("test_Title")),
+        true
+    );
+
+    bReturningToTitle = false;
+}

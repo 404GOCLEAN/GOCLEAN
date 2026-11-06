@@ -9,6 +9,7 @@
 
 
 class USphereComponent;
+class USphereCollision;
 class UDecalComponent;
 
 
@@ -24,13 +25,21 @@ class GOCLEAN_API UGExocismComponent : public UGAdditionalObjFuncComponent
 public:
 	UGExocismComponent();
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	virtual void InitializeAdditionalData(const FGNonfixedObjData& Data) override;
+
+	UFUNCTION(BlueprintCallable)
+	void DoOnInteractionTriggered(AGOCLEANCharacter* Target)
+	{
+		OnInteractionTriggered(Target);
+	}
 
 
 protected:
-	virtual void BeginPlay() override {};
+	virtual void BeginPlay() override;
 
-	virtual void OnInteractionTriggered(AGOCLEANCharacter* Target) override {};
+	virtual void OnInteractionTriggered(AGOCLEANCharacter* Target) override;
 
 	virtual void OnStateChangeTriggered(ENonfixedObjState PrevState, ENonfixedObjState ChangedState) override {};
 	
@@ -49,8 +58,14 @@ public:
 	UFUNCTION()
 	void OnFailedInExocism();
 
+	UFUNCTION()
+	void OnFinishExocism();
+
 
 protected:
+	// condition
+	FOnExocismCircleInteracted StartCondition;
+
 	FOnExocismCircleInteracted OnExocismCircleInteracted;
 
 	UPROPERTY()
@@ -59,6 +74,8 @@ protected:
 	UPROPERTY()
 	FTimerHandle NextStepTimerHandler;
 
+
+	// decal
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<USphereComponent> InteractionVolume;
 
@@ -66,14 +83,18 @@ protected:
 	TObjectPtr<UDecalComponent> Decal;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<UDecalComponent> FailDecal;
+	TObjectPtr<UMaterialInterface> FailDecal;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<UDecalComponent> SuccessDecal;
+	TObjectPtr<UMaterialInterface> SuccessDecal;
 
 
 private:
 	// 수살귀
+	// step0. 초기 세팅
+	UFUNCTION()
+	void ExocismStep0_DrownGhost(AGOCLEANCharacter* Target);
+
 	// step1. 백자 달항아리 배치
 	UFUNCTION()
 	void ExocismStep1_DrownGhost(AGOCLEANCharacter* Target);
@@ -86,6 +107,10 @@ private:
 	// 손각시
 	// step1. 흰 소복 배치
 	UFUNCTION()
+	void ExocismStep0_MaidenGhost(AGOCLEANCharacter* Target);
+
+	// step1. 흰 소복 배치
+	UFUNCTION()
 	void ExocismStep1_MaidenGhost(AGOCLEANCharacter* Target);
 
 	// step2. 쇠 말뚝 상호작용
@@ -94,6 +119,10 @@ private:
 
 
 	// 태자귀
+	// step1. 
+	UFUNCTION()
+	void ExocismStep0_LittleGhost(AGOCLEANCharacter* Target);
+
 	// step1. 
 	UFUNCTION()
 	void ExocismStep1_LittleGhost(AGOCLEANCharacter* Target);
@@ -107,5 +136,28 @@ private:
 	UPROPERTY()
 	TObjectPtr<AGFixedObject> OwnerActor;
 
+	UPROPERTY(VisibleAnywhere, ReplicatedUsing = OnRep_bIsFailed, Category = "Exocism")
+	bool bIsFailed;
+
+	UPROPERTY(VisibleAnywhere, ReplicatedUsing = OnRep_bIsActiveExcosim, Category = "Exocism")
+	bool bIsActiveExcosim;
+
+	UPROPERTY()
+	float SuccessProgress;
+
+
+	// replication function
+	UFUNCTION()
+	void OnRep_bIsFailed();
+
+	UFUNCTION()
+	void OnRep_bIsActiveExcosim();
+
+
+public:
+	void ResetFailState()
+	{
+		bIsFailed = false;
+	}
 
 };
