@@ -58,8 +58,6 @@ void UGameSessionInstance::HandlePostLoadMap(UWorld* LoadedWorld)
     PendingUIWorld = LoadedWorld;
     UITryCount = 0;
 
-    // Network disconnects can load Title without calling ReturnToTitle.
-    // Clean only this GameInstance's world before exposing Create/Join UI.
     if (LevelName.Equals(TEXT("test_Title")))
     {
         if (UVoiceChattingManager* VoiceManager = GetSubsystem<UVoiceChattingManager>())
