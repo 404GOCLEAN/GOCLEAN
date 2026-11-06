@@ -25,6 +25,11 @@ void UGameSessionInstance::Init()
 void UGameSessionInstance::Shutdown()
 {
     FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(SessionCleanupRetryTimer);
+    }
+    ClearSessionCleanupDelegate();
 
     Super::Shutdown();
 }
@@ -52,6 +57,16 @@ void UGameSessionInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 
     PendingUIWorld = LoadedWorld;
     UITryCount = 0;
+
+    if (LevelName.Equals(TEXT("test_Title")))
+    {
+        if (UVoiceChattingManager* VoiceManager = GetSubsystem<UVoiceChattingManager>())
+        {
+            VoiceManager->HandleWorldChanged(LoadedWorld);
+        }
+        BeginSessionCleanup(false);
+        return;
+    }
 
     ScheduleTryShowUI(LoadedWorld, 0.1f);
 
@@ -117,6 +132,12 @@ void UGameSessionInstance::TryShowLevelUI()
     }
 
     const FString LevelName = UGameplayStatics::GetCurrentLevelName(World, true);
+
+    if (LevelName.Equals(TEXT("test_Title")) && bReturningToTitle)
+    {
+        ScheduleTryShowUI(World, 0.1f);
+        return;
+    }
 
     APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
     UE_LOG(LogTemp, Warning, TEXT("[GI] TryShowLevelUI: PC=%s"),
@@ -258,98 +279,133 @@ void UGameSessionInstance::ClearPendingJoinCode()
 
 void UGameSessionInstance::ReturnToTitle()
 {
+    BeginSessionCleanup(true);
+}
+
+void UGameSessionInstance::BeginSessionCleanup(bool bOpenTitleAfterCleanup)
+{
     if (bReturningToTitle)
+    {
+        // If travel finished during an asynchronous destroy, stay on Title.
+        if (!bOpenTitleAfterCleanup) bOpenTitleAfterSessionCleanup = false;
         return;
+    }
 
     bReturningToTitle = true;
+    bOpenTitleAfterSessionCleanup = bOpenTitleAfterCleanup;
+    UE_LOG(LogTemp, Log, TEXT("[Session] Cleanup begin: GI=%s Reason=%s"),
+        *GetName(), bOpenTitleAfterCleanup ? TEXT("ReturnToTitle") : TEXT("TitleLoaded"));
 
-    UE_LOG(LogTemp, Warning, TEXT("[Session] Returning to Title"));
-
-    // 1. 음성 채널 퇴장
-    UVoiceChattingManager* VoiceManager = GetSubsystem<UVoiceChattingManager>();
-
-    if (VoiceManager)
+    if (UVoiceChattingManager* VoiceManager = GetSubsystem<UVoiceChattingManager>())
     {
         VoiceManager->Vivox_LeaveVoice();
     }
-
-    // 2. 세션 정보 정리
     ClearPendingJoinCode();
     ClearPendingVendingItemIds();
     SetPendingContractId(0);
+    TryDestroySession();
+}
 
-    // 3. Steam 세션 종료
-    SessionInterfaceForCleanup = Online::GetSessionInterface(GetWorld());
-
-    if (!SessionInterfaceForCleanup.IsValid() || !SessionInterfaceForCleanup->GetNamedSession(NAME_GameSession))
+void UGameSessionInstance::ClearSessionCleanupDelegate()
+{
+    if (SessionInterfaceForCleanup.IsValid() && DestroySessionDelegateHandle.IsValid())
     {
-        OpenTitleMap();
+        SessionInterfaceForCleanup->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionDelegateHandle);
+    }
+    DestroySessionDelegateHandle.Reset();
+    SessionInterfaceForCleanup.Reset();
+}
+
+void UGameSessionInstance::TryDestroySession()
+{
+    if (!bReturningToTitle) return;
+    if (!SessionInterfaceForCleanup.IsValid())
+    {
+        SessionInterfaceForCleanup = Online::GetSessionInterface(GetWorld());
+    }
+    if (!SessionInterfaceForCleanup.IsValid() ||
+        !SessionInterfaceForCleanup->GetNamedSession(NAME_GameSession))
+    {
+        FinishSessionCleanup();
         return;
     }
 
-    DestroySessionDelegateHandle =
-        SessionInterfaceForCleanup->
-        AddOnDestroySessionCompleteDelegate_Handle(
-            FOnDestroySessionCompleteDelegate::CreateUObject(
-                this,
-                &UGameSessionInstance::HandleDestroySessionComplete
-            )
-        );
-
-    if (!SessionInterfaceForCleanup->DestroySession(NAME_GameSession))
+    if (!DestroySessionDelegateHandle.IsValid())
     {
-        SessionInterfaceForCleanup->
-            ClearOnDestroySessionCompleteDelegate_Handle(
-                DestroySessionDelegateHandle
-            );
+        DestroySessionDelegateHandle = SessionInterfaceForCleanup->AddOnDestroySessionCompleteDelegate_Handle(
+            FOnDestroySessionCompleteDelegate::CreateUObject(this, &UGameSessionInstance::HandleDestroySessionComplete));
+    }
+    // Another caller may already be destroying it. Observe its completion.
+    if (SessionInterfaceForCleanup->GetSessionState(NAME_GameSession) == EOnlineSessionState::Destroying)
+    {
+        return;
+    }
 
-        UE_LOG(LogTemp, Error, TEXT("[Session] Failed to start DestroySession"));
+    UE_LOG(LogTemp, Log, TEXT("[Session] Destroy requested: GI=%s State=%d"),
+        *GetName(), static_cast<int32>(SessionInterfaceForCleanup->GetSessionState(NAME_GameSession)));
+    // Null/LAN providers can complete synchronously and reset the member pointer.
+    const IOnlineSessionPtr Sessions = SessionInterfaceForCleanup;
+    if (!Sessions->DestroySession(NAME_GameSession) && bReturningToTitle)
+    {
+        ClearSessionCleanupDelegate();
+        RetrySessionCleanup();
+    }
+}
 
-        bReturningToTitle = false;
+void UGameSessionInstance::RetrySessionCleanup()
+{
+    UE_LOG(LogTemp, Warning, TEXT("[Session] Cleanup incomplete: GI=%s; retrying before Create/Join"), *GetName());
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().SetTimer(SessionCleanupRetryTimer,
+            this, &UGameSessionInstance::TryDestroySession, 1.0f, false);
     }
 }
 
 void UGameSessionInstance::HandleDestroySessionComplete(FName SessionName, bool bWasSuccessful)
 {
-    if (SessionInterfaceForCleanup.IsValid())
-    {
-        SessionInterfaceForCleanup->
-            ClearOnDestroySessionCompleteDelegate_Handle(
-                DestroySessionDelegateHandle
-            );
-    }
-
-    SessionInterfaceForCleanup.Reset();
-
-    UE_LOG(LogTemp, Warning,
-        TEXT("[Session] Destroy completed: %s"),
-        bWasSuccessful ? TEXT("Success") : TEXT("Failed"));
-
+    if (SessionName != NAME_GameSession || !bReturningToTitle) return;
+    ClearSessionCleanupDelegate();
+    UE_LOG(LogTemp, Log, TEXT("[Session] Destroy completed: GI=%s Result=%s"),
+        *GetName(), bWasSuccessful ? TEXT("Success") : TEXT("Failed"));
     if (!bWasSuccessful)
     {
-        bReturningToTitle = false;
+        RetrySessionCleanup();
         return;
     }
+    // Verify the local named record is gone before allowing the title menu.
+    TryDestroySession();
+}
 
-    OpenTitleMap();
+void UGameSessionInstance::FinishSessionCleanup()
+{
+    ClearSessionCleanupDelegate();
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(SessionCleanupRetryTimer);
+    }
+    const bool bShouldOpenTitle = bOpenTitleAfterSessionCleanup;
+    bOpenTitleAfterSessionCleanup = false;
+    bReturningToTitle = false;
+    UE_LOG(LogTemp, Log, TEXT("[Session] Cleanup complete: GI=%s NoSession"), *GetName());
+    if (bShouldOpenTitle)
+    {
+        OpenTitleMap();
+    }
+    else
+    {
+        ScheduleTryShowUI(GetWorld(), 0.1f);
+    }
 }
 
 void UGameSessionInstance::OpenTitleMap()
 {
     UWorld* World = GetWorld();
-
-    if (!World)
+    if (!World) return;
+    if (UGameplayStatics::GetCurrentLevelName(World, true).Equals(TEXT("test_Title")))
     {
-        bReturningToTitle = false;
+        ScheduleTryShowUI(World, 0.1f);
         return;
     }
-
-    // 타이틀 맵으로 로컬 이동
-    UGameplayStatics::OpenLevel(
-        World,
-        FName(TEXT("test_Title")),
-        true
-    );
-
-    bReturningToTitle = false;
+    UGameplayStatics::OpenLevel(World, FName(TEXT("test_Title")), true);
 }
