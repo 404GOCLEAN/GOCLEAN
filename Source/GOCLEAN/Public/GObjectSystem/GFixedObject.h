@@ -49,14 +49,11 @@ public:
 		return true;
 	}
 
-	virtual void ExecuteInteraction(FName EquipID, AGOCLEANCharacter* Target) override
-	{
-		ExecuteInteraction_Internal();
-	}
+	virtual void ExecuteInteraction(FName EquipID, AGOCLEANCharacter* Target) override;
 
 
 	UFUNCTION(BlueprintImplementableEvent)
-	void ExecuteInteraction_Internal();
+	void ExecuteInteraction_Internal(AGOCLEANCharacter* Target);
 
 
 

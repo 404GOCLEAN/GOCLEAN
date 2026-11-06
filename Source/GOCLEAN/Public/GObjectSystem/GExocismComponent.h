@@ -9,6 +9,7 @@
 
 
 class USphereComponent;
+class USphereCollision;
 class UDecalComponent;
 
 
@@ -28,11 +29,17 @@ public:
 
 	virtual void InitializeAdditionalData(const FGNonfixedObjData& Data) override;
 
+	UFUNCTION(BlueprintCallable)
+	void DoOnInteractionTriggered(AGOCLEANCharacter* Target)
+	{
+		OnInteractionTriggered(Target);
+	}
+
 
 protected:
 	virtual void BeginPlay() override;
 
-	virtual void OnInteractionTriggered(AGOCLEANCharacter* Target) override {};
+	virtual void OnInteractionTriggered(AGOCLEANCharacter* Target) override;
 
 	virtual void OnStateChangeTriggered(ENonfixedObjState PrevState, ENonfixedObjState ChangedState) override {};
 	

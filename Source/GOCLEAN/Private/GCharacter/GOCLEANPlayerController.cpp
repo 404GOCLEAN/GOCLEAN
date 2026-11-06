@@ -14,6 +14,8 @@
 #include "UObject/ConstructorHelpers.h"
 #include "TimerManager.h"
 
+#include "ServerModule/GameSession/GameSessionInstance.h"
+
 AGOCLEANPlayerController::AGOCLEANPlayerController()
 {
     RPCRouter = CreateDefaultSubobject<URPCRouterComponent>(TEXT("RPCRouter"));
@@ -120,7 +122,9 @@ void AGOCLEANPlayerController::ShowResultUI()
         CurrentWidget->AddToViewport();
 
         bShowMouseCursor = true;
+
         FInputModeUIOnly Mode;
+        Mode.SetWidgetToFocus(CurrentWidget->TakeWidget());
         SetInputMode(Mode);
     }
 }
@@ -326,4 +330,17 @@ void AGOCLEANPlayerController::ShowSpectatorUI()
         FInputModeGameOnly Mode;
         SetInputMode(Mode);
     }
+}
+
+void AGOCLEANPlayerController::ReturnToTitle()
+{
+    if (!IsLocalController())
+        return;
+
+    UGameSessionInstance* GI = GetGameInstance<UGameSessionInstance>();
+
+    if (!GI)
+        return;
+
+    GI->ReturnToTitle();
 }

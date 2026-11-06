@@ -6,6 +6,8 @@
 #include "ServerModule/GameSession/PlayerSessionState.h"
 #include "ServerModule/GameSession/GameSessionInstance.h"
 
+#include "GCharacter/GOCLEANPlayerController.h"
+
 AInGameGameMode::AInGameGameMode()
 {
     GameStateClass = AInGameGameState::StaticClass();
@@ -73,7 +75,7 @@ void AInGameGameMode::InitializeGameState()
 
     IGS->SetExorcismState(EExorcismState::None);
 
-    IGS->SetSpiritualGauge(100.f);
+    // IGS->SetSpiritualGauge(100.f);
     IGS->SetRestGauge(0.f);
 
     IGS->SetExorcismProgress(0.f);
@@ -221,17 +223,28 @@ void AInGameGameMode::StartExtractionPhase()
 {
     AInGameGameState* IGS = GetInGameState();
 
-    if (!IGS)
+    if (!IGS || bGameFinished)
         return;
 
+    // 중복 실행 방지
+    if (IGS->GetGamePhase() == EGamePhase::Extraction || IGS->GetGamePhase() == EGamePhase::End)
+        return;
 
     IGS->SetExorcismState(EExorcismState::Success);
-
     IGS->SetGamePhase(EGamePhase::Extraction);
 
+    IGS->SetExtractionTimeRemaining(60.f);
 
-     // 실제 철수 제한시간 설정 필요
-     IGS->SetExtractionTimeRemaining(60.f);
+    // 1초마다 카운트다운 실행
+    GetWorldTimerManager().SetTimer(
+        ExtractionTimerHandle,
+        this,
+        &AInGameGameMode::UpdateExtractionCountdown,
+        1.0f,
+        true
+    );
+
+    UE_LOG(LogTemp, Warning, TEXT("[Extraction] Countdown started: 60 seconds"));
 }
 
 
@@ -404,28 +417,32 @@ void AInGameGameMode::FinishGame(bool bSuccess)
     if (bGameFinished)
         return;
 
-
-    bGameFinished = true;
-
-
     AInGameGameState* IGS = GetInGameState();
 
     if (!IGS)
         return;
 
+    bGameFinished = true;
+
+    GetWorldTimerManager().ClearTimer(ExtractionTimerHandle);
+
+    IGS->SetGameSuccessful(bSuccess);
+    IGS->SetGamePhase(EGamePhase::End);
 
     IGS->SetGamePhase(EGamePhase::End);
 
+    UE_LOG(LogTemp, Warning, TEXT("[GameEnd] Finished. Success=%s"), bSuccess ? TEXT("true") : TEXT("false"));
 
-    /*
-     * TODO:
-     *
-     * FinalRewardMoney 계산
-     *
-     * 결과 UI 표시
-     *
-     * 이후 Title 이동
-     */
+    // 모든 플레이어에게 결과 UI 표시
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        AGOCLEANPlayerController* PC = Cast<AGOCLEANPlayerController>(It->Get());
+
+        if (!IsValid(PC))
+            continue;
+
+        PC->Client_ShowResultUI();
+    }
 }
 
 
@@ -571,4 +588,29 @@ UClass* AInGameGameMode::GetDefaultPawnClassForController_Implementation(AContro
 
 
     return PawnClass.Get();
+}
+
+void AInGameGameMode::UpdateExtractionCountdown()
+{
+    AInGameGameState* IGS = GetInGameState();
+
+    if (!IGS || bGameFinished)
+    {
+        GetWorldTimerManager().ClearTimer(ExtractionTimerHandle);
+        return;
+    }
+
+    const float RemainingTime = FMath::Max(0.f, IGS->GetExtractionTimeRemaining() - 1.f);
+
+    IGS->SetExtractionTimeRemaining(RemainingTime);
+
+    if (RemainingTime <= 0.f)
+    {
+        GetWorldTimerManager().ClearTimer(ExtractionTimerHandle);
+
+        UE_LOG(LogTemp, Warning, TEXT("[Extraction] Time expired. Finishing game."));
+
+        // 제한시간 종료
+        FinishGame(true);
+    }
 }

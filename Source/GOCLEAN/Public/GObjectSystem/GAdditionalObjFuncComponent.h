@@ -54,8 +54,7 @@ public:
 
 	virtual void InitializeAdditionalData(const FGNonfixedObjData& Data) override;
 
-	UFUNCTION()
-	void DropObject();
+	virtual void DropObject();
 
 
 protected:
@@ -71,7 +70,6 @@ protected:
 	void PickUpObject(AGOCLEANCharacter* Target);
 
 
-private:
 	UPROPERTY(VisibleAnywhere)
 	bool bIsPickedUp = false;
 
@@ -79,6 +77,47 @@ private:
 	AGOCLEANCharacter* OwnerPlayer;
 
 };
+
+
+UCLASS(Blueprintable, meta = (BlueprintSpawnableComponent))
+class GOCLEAN_API UGEXToolComponent : public UGPickComponent
+{
+	GENERATED_BODY()
+
+
+public:
+	UGEXToolComponent() {}
+
+	virtual void InitializeAdditionalData(const FGNonfixedObjData& Data) override
+	{
+		Super::InitializeAdditionalData(Data);
+	}
+
+	virtual void DropObject() override;
+
+
+	UPROPERTY(EditAnywhere)
+	bool bIsRemovable = false;
+
+
+protected:
+	virtual void BeginPlay() override
+	{
+		Super::BeginPlay();
+	}
+
+	virtual void OnInteractionTriggered(AGOCLEANCharacter* Target) override
+	{
+		Super::OnInteractionTriggered(Target);
+	}
+
+	virtual void OnStateChangeTriggered(ENonfixedObjState PrevState, ENonfixedObjState ChangedState) override
+	{
+		Super::OnStateChangeTriggered(PrevState, ChangedState);
+	}
+
+};
+
 
 
 UCLASS(Blueprintable, meta = (BlueprintSpawnableComponent))

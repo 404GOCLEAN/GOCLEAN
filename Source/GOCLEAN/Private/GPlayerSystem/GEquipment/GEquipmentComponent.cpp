@@ -231,7 +231,9 @@ void UGEquipmentComponent::AddMopPollution(float Value)
 	FName CurrEquipID = GetCurrentEquipmentID();
 	if (CurrEquipID == "Eq_Mop")
 	{
-		MopPollution += Value;
+		float Clamp = FMath::Clamp(MopPollution + Value, 0.0f, 20.0f);
+		MopPollution = Clamp;
+
 		UE_LOG(LogGObject, Log, TEXT("[Equipment] Add Mop's pollution! : %f"), MopPollution);
 
 		OnRep_MopPollusion();
@@ -244,6 +246,16 @@ void UGEquipmentComponent::AddMopPollution(float Value)
 	else
 	{
 		UE_LOG(LogGObject, Warning, TEXT("[Equipment] this equipment can not add pollution! : %s"), *CurrEquipID.ToString());
+	}
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1,                 // 메시지 키
+			5.0f,               // 표시 시간
+			FColor::Red,      // 글자 색상
+			FString::Printf(TEXT("[Mop] mop pollution %f"), MopPollution)
+		);
 	}
 }
 

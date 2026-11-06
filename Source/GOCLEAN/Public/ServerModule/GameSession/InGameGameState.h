@@ -163,7 +163,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "InGame|Gauge")
     float GetRemainingSpiritualGaugePercent() const
     {
-        return SpiritualGauge/InitialSpiritualGauge;
+        return SpiritualGauge/InitialSpiritualGauge * 100.0f;
     }
 
 
@@ -281,6 +281,18 @@ public:
     // 재고 변경 시 Widget 등이 받을 이벤트
     UPROPERTY(BlueprintAssignable, Category = "InGame|Vending")
     FOnInGameVendingStockChanged OnInGameVendingStockChanged;
+
+    // =================
+    // Result
+    // =================
+
+    UFUNCTION(BlueprintPure, Category = "InGame|Result")
+    bool WasGameSuccessful() const
+    {
+        return bGameSuccessful;
+    }
+
+    void SetGameSuccessful(bool bSuccess);
 
 protected:
 
@@ -423,4 +435,12 @@ private:
 
     UPROPERTY(ReplicatedUsing = OnRep_VendingStocks, BlueprintReadOnly, Category = "InGame|Vending", meta = (AllowPrivateAccess = "true"))
     TArray<FInGameVendingStock> VendingStocks;
+
+
+    // =================
+    // Result
+    // =================
+
+    UPROPERTY(Replicated)
+    bool bGameSuccessful = false;
 };

@@ -159,4 +159,7 @@ public:
 	void ShowSpectatorUI();
 
 
+public:
+	UFUNCTION(BlueprintCallable, Category = "UI|Result")
+	void ReturnToTitle();
 };

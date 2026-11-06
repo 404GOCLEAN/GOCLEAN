@@ -97,6 +97,11 @@ private:
 
     bool bGameFinished = false;
 
+    // Extraction Countdown
+    FTimerHandle ExtractionTimerHandle;
+
+    void UpdateExtractionCountdown();
+
     // =================
     // Vending
     // =================
