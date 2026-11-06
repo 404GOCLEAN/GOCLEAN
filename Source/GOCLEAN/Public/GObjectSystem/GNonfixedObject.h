@@ -13,7 +13,6 @@
 
 class UGAdditionalObjFuncComponent;
 class UBoxComponent;
-class UStaticMeshComponent;
 
 
 UCLASS()
