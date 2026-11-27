@@ -68,7 +68,7 @@ public:
 
 protected:
 	// setter
-	void SetCurrentSlotIndex(int32 NewValue);
+	void SetCurrentSlot(int32 NewValue);
 
 	void SetCurrentEquipmentID(FName NewValue);
 
@@ -84,10 +84,7 @@ protected:
 	//////////////////////////////////
 protected:
 	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<AGOCLEANCharacter> OnwerCharacter;
-
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<UStaticMeshComponent> EquipmentMeshComp;
+	TObjectPtr<AGOCLEANCharacter> OwnerCharacter;
 
 
 
