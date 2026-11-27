@@ -196,6 +196,10 @@ public:
 
     void SetEscaped(bool bNewEscaped);
 
+    // Server-authored zone snapshot used by this player's ambient audio.
+    const TArray<FName>& GetAmbientZoneIds() const { return AmbientZoneIds; }
+    void SetAmbientZoneIds(const TArray<FName>& NewZoneIds);
+
 
     // ============================================================
     // Lobby Money
@@ -413,5 +417,8 @@ private:
     // 철수 완료 여부
     UPROPERTY(ReplicatedUsing = OnRep_HasEscaped, BlueprintReadOnly,Category = "Player|InGame", meta = (AllowPrivateAccess = "true"))
     bool bHasEscaped = false;
+
+    UPROPERTY(Replicated)
+    TArray<FName> AmbientZoneIds;
 	
 };

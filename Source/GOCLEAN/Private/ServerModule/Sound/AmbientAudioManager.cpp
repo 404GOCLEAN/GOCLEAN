@@ -8,9 +8,14 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/AudioComponent.h"
 #include "Sound/SoundBase.h"
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 
 #include "GMapSystem/Server/GMapManager.h"
 #include "GTypes/GMapTypes.h"
+#include "ServerModule/GameSession/InGameGameState.h"
+#include "ServerModule/GameSession/PlayerSessionState.h"
 
 
 void UAmbientAudioManager::Initialize(FSubsystemCollectionBase& Collection)
@@ -43,124 +48,126 @@ UGMapManager* UAmbientAudioManager::GetMapManager() const
     return World->GetSubsystem<UGMapManager>();
 }
 
-//void UAmbientAudioManager::StartAmbient()
-//{
-//    if (bRunning) return;
-//
-//    bRunning = true;
-//    bIsOutdoor = false;
-//    CurrentZoneId = NAME_None;
-//
-//    UWorld* World = GetWorldSafe();
-//    if (!World) return;
-//
-//    // 컨텍스트 폴링 시작
-//    World->GetTimerManager().ClearTimer(ContextPollTimer);
-//    World->GetTimerManager().SetTimer(
-//        ContextPollTimer,
-//        this,
-//        &UAmbientAudioManager::TickContext,
-//        ContextPollInterval,
-//        true
-//    );
-//
-//    // 즉시 1회 갱신
-//    TickContext();
-//}
+APawn* UAmbientAudioManager::GetLocalPawn(UWorld* World) const
+{
+    const ULocalPlayer* Player = GetLocalPlayer();
+    APlayerController* Controller = Player && World ? Player->GetPlayerController(World) : nullptr;
+    return Controller ? Controller->GetPawn() : nullptr;
+}
 
 void UAmbientAudioManager::StopAmbient()
 {
     bRunning = false;
-
-    if (UWorld* World = GetWorldSafe())
+    if (UWorld* World = AmbientWorld.Get())
     {
         World->GetTimerManager().ClearTimer(ContextPollTimer);
         World->GetTimerManager().ClearTimer(EventSfxTimer);
     }
-
-    // 2D 루프 정지
-    if (BaseLoopComp)
+    if (IsValid(BaseLoopComp))
     {
         BaseLoopComp->Stop();
-        BaseLoopComp = nullptr;
+        BaseLoopComp->DestroyComponent();
     }
-
+    BaseLoopComp = nullptr;
+    AmbientWorld.Reset();
+    ContextPawn.Reset();
     bIsOutdoor = false;
+    bBaseLoopInitialized = false;
     CurrentZoneId = NAME_None;
 }
 
 void UAmbientAudioManager::StartAmbient(USoundBase* InIndoorLoop, USoundBase* InOutdoorLoop, UDataTable* InZoneTable)
 {
-    IndoorBaseLoop = InIndoorLoop;
-    OutdoorBaseLoop = InOutdoorLoop;
-    ZoneAudioTable = InZoneTable;
-
-    if (bRunning) return;
-
-    bRunning = true;
-    bIsOutdoor = false;
-    CurrentZoneId = NAME_None;
-
     UWorld* World = GetWorldSafe();
     if (!World) return;
 
-    // 컨텍스트 폴링 시작
-    World->GetTimerManager().ClearTimer(ContextPollTimer);
-    World->GetTimerManager().SetTimer(
-        ContextPollTimer,
-        this,
-        &UAmbientAudioManager::TickContext,
-        ContextPollInterval,
-        true
-    );
+    if (bRunning && AmbientWorld.Get() == World &&
+        IndoorBaseLoop == InIndoorLoop && OutdoorBaseLoop == InOutdoorLoop && ZoneAudioTable == InZoneTable)
+    {
+        return;
+    }
 
-    // 즉시 1회 갱신
+    StopAmbient();
+    IndoorBaseLoop = InIndoorLoop;
+    OutdoorBaseLoop = InOutdoorLoop;
+    ZoneAudioTable = InZoneTable;
+    AmbientWorld = World;
+    bRunning = true;
+
+    World->GetTimerManager().SetTimer(ContextPollTimer, this,
+        &UAmbientAudioManager::TickContext, FMath::Max(0.05f, ContextPollInterval), true);
     TickContext();
 }
 
 void UAmbientAudioManager::TickContext()
 {
     if (!bRunning) return;
+    UWorld* World = AmbientWorld.Get();
+    if (!World || World != GetWorldSafe()) return;
 
-    UWorld* World = GetWorldSafe();
-    if (!World) return;
+    // Replicated GameState can arrive after StartAmbient on a joining client.
+    AGameStateBase* GameState = World->GetGameState();
+    if (!GameState || !GameState->IsA<AInGameGameState>())
+    {
+        World->GetTimerManager().ClearTimer(EventSfxTimer);
+        if (IsValid(BaseLoopComp))
+        {
+            BaseLoopComp->Stop();
+            BaseLoopComp->DestroyComponent();
+        }
+        BaseLoopComp = nullptr;
+        ContextPawn.Reset();
+        CurrentZoneId = NAME_None;
+        bBaseLoopInitialized = false;
+        if (GameState) StopAmbient();
+        return;
+    }
 
-    // 로컬 플레이어 Pawn 기준 (멀티에서 각 클라가 자기 것만 실행)
-    APawn* Pawn = UGameplayStatics::GetPlayerPawn(World, 0);
-    if (!Pawn) return;
-
+    APawn* Pawn = GetLocalPawn(World);
     UGMapManager* MapMgr = GetMapManager();
-    if (!MapMgr) return;
+    if (!Pawn || !MapMgr) return;
 
-    // 1) 실내/실외 판정 → 베이스 루프 갱신
-    const bool bNowOutdoor = MapMgr->IsActorInZoneType(Pawn, EGZoneType::E_Outdoor);
-    if (bNowOutdoor != bIsOutdoor)
+    const APlayerSessionState* PS = Pawn->GetPlayerState<APlayerSessionState>();
+    // The host reads the authoritative map; clients read their owner-only snapshot.
+    TArray<FName> ZoneIds = Pawn->HasAuthority()
+        ? MapMgr->GetActorZoneIds(Pawn)
+        : (PS ? PS->GetAmbientZoneIds() : TArray<FName>());
+    if (ZoneIds.IsEmpty() && !InitialZoneId.IsNone())
+    {
+        if (!MapMgr->GetZoneData(InitialZoneId)) return;
+        // Audio-only startup fallback: do not write into gameplay zone membership.
+        ZoneIds.Add(InitialZoneId);
+    }
+    if (ContextPawn.Get() != Pawn)
+    {
+        ContextPawn = Pawn;
+        bBaseLoopInitialized = false;
+        CurrentZoneId = NAME_None;
+        World->GetTimerManager().ClearTimer(EventSfxTimer);
+    }
+
+    const FName NewZoneId = ChooseDominantZoneId(ZoneIds, MapMgr);
+    const FGZoneData* Zone = MapMgr->GetZoneData(NewZoneId);
+    const bool bNowOutdoor = Zone && Zone->Type == EGZoneType::E_Outdoor;
+    if (!bBaseLoopInitialized || bNowOutdoor != bIsOutdoor)
     {
         bIsOutdoor = bNowOutdoor;
         UpdateBaseLoop(bIsOutdoor);
-
+        bBaseLoopInitialized = true;
         if (bDebugLog)
         {
-            UE_LOG(LogTemp, Warning, TEXT("[Ambient] BaseLoop switched: %s"),
-                bIsOutdoor ? TEXT("Outdoor") : TEXT("Indoor"));
+            UE_LOG(LogTemp, Log, TEXT("[Ambient] Base loop initialized: %s Zone=%s"),
+                bIsOutdoor ? TEXT("Outdoor") : TEXT("Indoor"), *NewZoneId.ToString());
         }
     }
-
-    // 2) 현재 ZoneID 목록 → 대표 ZoneID 선택
-    const TArray<FName> ZoneIds = MapMgr->GetActorZoneIds(Pawn);
-    const FName NewZoneId = ChooseDominantZoneId(ZoneIds, MapMgr);
 
     if (NewZoneId != CurrentZoneId)
     {
         CurrentZoneId = NewZoneId;
-
         if (bDebugLog)
         {
-            UE_LOG(LogTemp, Warning, TEXT("[Ambient] Zone changed: %s"),
-                *CurrentZoneId.ToString());
+            UE_LOG(LogTemp, Log, TEXT("[Ambient] Zone changed: %s"), *CurrentZoneId.ToString());
         }
-
-        // Zone이 바뀌면 이벤트 SFX 스케줄 재설정
         RescheduleEventSfx();
     }
 }
@@ -174,30 +181,33 @@ void UAmbientAudioManager::UpdateBaseLoop(bool bNowOutdoor)
     if (!Target)
     {
         // 타겟 루프가 없으면 끔
-        if (BaseLoopComp)
+        if (IsValid(BaseLoopComp))
         {
             BaseLoopComp->Stop();
+            BaseLoopComp->DestroyComponent();
             BaseLoopComp = nullptr;
         }
         return;
     }
 
     // 이미 같은 사운드가 재생 중이면 유지
-    if (BaseLoopComp && BaseLoopComp->Sound == Target && BaseLoopComp->IsPlaying())
+    if (IsValid(BaseLoopComp) && BaseLoopComp->Sound == Target && BaseLoopComp->IsPlaying())
     {
         return;
     }
 
     // 기존 루프 정지
-    if (BaseLoopComp)
+    if (IsValid(BaseLoopComp))
     {
         BaseLoopComp->Stop();
+        BaseLoopComp->DestroyComponent();
         BaseLoopComp = nullptr;
     }
 
     // 새 루프 시작
-    BaseLoopComp = UGameplayStatics::SpawnSound2D(World, Target, BaseLoopVolume);
-    if (BaseLoopComp)
+    BaseLoopComp = UGameplayStatics::SpawnSound2D(World, Target, FMath::Max(0.f, BaseLoopVolume),
+        1.f, 0.f, nullptr, false, false);
+    if (IsValid(BaseLoopComp))
     {
         BaseLoopComp->bAutoDestroy = false;
     }
@@ -243,7 +253,7 @@ const FAmbientZoneAudioRow* UAmbientAudioManager::FindZoneAudioRow(FName ZoneId)
     if (ZoneId.IsNone()) return nullptr;
 
     // RowName을 ZoneId로 맞춰 쓰는 방식
-    return ZoneAudioTable->FindRow<FAmbientZoneAudioRow>(ZoneId, TEXT("AmbientZoneAudioRow"));
+    return ZoneAudioTable->FindRow<FAmbientZoneAudioRow>(ZoneId, TEXT("AmbientZoneAudioRow"), false);
 }
 
 USoundBase* UAmbientAudioManager::PickRandom(const TArray<TObjectPtr<USoundBase>>& List)
@@ -285,6 +295,7 @@ void UAmbientAudioManager::TryPlayEventSfx()
 {
     UWorld* World = GetWorldSafe();
     if (!World) return;
+    if (!bRunning || World != AmbientWorld.Get() || !World->GetGameState<AInGameGameState>()) return;
 
     if (!bEnableEventSfx)
     {
@@ -292,7 +303,7 @@ void UAmbientAudioManager::TryPlayEventSfx()
         return;
     }
 
-    APawn* Pawn = UGameplayStatics::GetPlayerPawn(World, 0);
+    APawn* Pawn = GetLocalPawn(World);
     if (!Pawn)
     {
         RescheduleEventSfx();
@@ -332,7 +343,7 @@ void UAmbientAudioManager::TryPlayEventSfx()
     }
 
     // 3D 이벤트 사운드 재생
-    UGameplayStatics::PlaySoundAtLocation(World, Sfx, Loc);
+    UGameplayStatics::PlaySoundAtLocation(World, Sfx, Loc, FMath::Max(0.f, EventSfxVolume));
 
     if (bDebugLog)
     {

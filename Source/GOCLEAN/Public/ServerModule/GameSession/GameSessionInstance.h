@@ -64,6 +64,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Session")
     const FString& GetPendingJoinCode() const;
 
+    UFUNCTION(BlueprintCallable, Category = "Session|JoinCode")
+    bool CopyJoinCodeToClipboard();
+
     bool RefreshJoinCodeFromSession();
 
 private:

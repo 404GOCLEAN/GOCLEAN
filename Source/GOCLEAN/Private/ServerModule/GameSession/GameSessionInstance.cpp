@@ -8,6 +8,7 @@
 #include "OnlineSubsystemUtils.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
+#include "HAL/PlatformApplicationMisc.h"
 
 static float Clamp01(float v) { return FMath::Clamp(v, 0.f, 1.f); }
 
@@ -408,4 +409,12 @@ void UGameSessionInstance::OpenTitleMap()
         return;
     }
     UGameplayStatics::OpenLevel(World, FName(TEXT("test_Title")), true);
+}
+
+bool UGameSessionInstance::CopyJoinCodeToClipboard()
+{
+    const FString Code = PendingJoinCode.TrimStartAndEnd();
+    if (!IsValidJoinCode(Code)) return false;
+    FPlatformApplicationMisc::ClipboardCopy(*Code);
+    return true;
 }
