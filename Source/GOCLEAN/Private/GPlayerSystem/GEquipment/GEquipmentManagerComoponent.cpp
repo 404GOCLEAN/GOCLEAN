@@ -110,7 +110,7 @@ bool UGEquipmentManagerComoponent::RegisterOwnerCharacter()
 		return false;
 	}
 
-
+	return true;
 }
 
 
