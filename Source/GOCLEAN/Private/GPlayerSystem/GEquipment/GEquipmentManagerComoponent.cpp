@@ -79,7 +79,7 @@ void UGEquipmentManagerComoponent::SetCurrentSlot(int32 NewValue)
 
 		if (CurrentEquip)
 		{
-			SetCurrentEquipmentID(CurrentEquip->GetEquipID());
+			// SetCurrentEquipmentID(CurrentEquip->GetEquipID());
 		}
 	}
 }
