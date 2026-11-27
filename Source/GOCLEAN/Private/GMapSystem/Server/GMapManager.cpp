@@ -4,6 +4,8 @@
 #include "GMapSystem/Server/GMapManager.h"
 
 #include "GMapSystem/GDoorway.h"
+#include "GameFramework/Pawn.h"
+#include "ServerModule/GameSession/PlayerSessionState.h"
 #include "GDataManagerSubsystem.h"
 #include "GTypes/DataTableRow/GMapDataRow.h"
 #include "../../../GOCLEAN.h"
@@ -70,6 +72,18 @@ void UGMapManager::PlayerEnteredZone(FName ZoneName, AActor* PlayerActor)
 	if (ZoneName.IsNone() || !ZoneDatas.Contains(ZoneName) || !PlayerActor) return;
 
 	ZoneDatas[ZoneName].IncludedPlayerList.AddUnique(PlayerActor);
+
+    // 존 정보 PlayerState에 전달
+    if (APawn* Pawn = Cast<APawn>(PlayerActor))
+    {
+        if (Pawn->HasAuthority())
+        {
+            if (APlayerSessionState* PS = Pawn->GetPlayerState<APlayerSessionState>())
+            {
+                PS->SetAmbientZoneIds(GetActorZoneIds(PlayerActor));
+            }
+        }
+    }
 }
 
 void UGMapManager::PlayerExitedZone(FName ZoneName, AActor* PlayerActor)
@@ -77,6 +91,18 @@ void UGMapManager::PlayerExitedZone(FName ZoneName, AActor* PlayerActor)
 	if (ZoneName.IsNone() || !ZoneDatas.Contains(ZoneName) || !PlayerActor) return;
 
 	ZoneDatas[ZoneName].IncludedPlayerList.Remove(PlayerActor);
+
+	// 존 정보 PlayerState에 전달
+    if (APawn* Pawn = Cast<APawn>(PlayerActor))
+    {
+        if (Pawn->HasAuthority())
+        {
+            if (APlayerSessionState* PS = Pawn->GetPlayerState<APlayerSessionState>())
+            {
+                PS->SetAmbientZoneIds(GetActorZoneIds(PlayerActor));
+            }
+        }
+    }
 }
 
 void UGMapManager::GhostEnteredZone(FName ZoneName, AActor* GhostActor)

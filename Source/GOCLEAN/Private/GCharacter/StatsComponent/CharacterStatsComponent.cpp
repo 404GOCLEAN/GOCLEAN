@@ -10,7 +10,7 @@ void UCharacterStatsComponent::BeginPlay()
 	Super::BeginPlay();
 	
 	// Character base stats initalize
-	InitializeStats(2, 100.0f, 10.0f, 1.0f, 1.0f, 1.0f, 400.0f);
+	InitializeStats(2, 100.0f, 10.0f, 1.0f, 1.0f, 1.0f, 250.0f);
 
 	SetIsReplicatedByDefault(true);
 
@@ -26,7 +26,7 @@ void UCharacterStatsComponent::ResetStats()
 {
 	SetCurrentSanity(100.0f);
 	SetCurrentStamina(10.0f);
-	SetDefaultSpeed(400.0f);
+	SetDefaultSpeed(250.0f);
 	SetSanityDrainRate(0.18f);
 	SetSanityDrainMultiplier(1.0f);
 }
@@ -75,7 +75,7 @@ void UCharacterStatsComponent::SetDefaultSpeed(float NewDefaultSpeed) {
 	DefaultSpeed = NewDefaultSpeed;
 	WalkSpeed = NewDefaultSpeed;
 	CrouchSpeed = NewDefaultSpeed - 100;
-	SprintSpeed = NewDefaultSpeed + 300;
+	SprintSpeed = NewDefaultSpeed + 200;
 }
 
 

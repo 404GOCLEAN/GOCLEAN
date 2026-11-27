@@ -11,6 +11,7 @@
 class UAudioComponent;
 class USoundBase;
 class UGMapManager;
+class APawn;
 
 
 USTRUCT(BlueprintType)
@@ -77,11 +78,18 @@ protected:
     TObjectPtr<USoundBase> OutdoorBaseLoop = nullptr;
 
     UPROPERTY(EditDefaultsOnly, Category = "Ambient|Base", meta = (ClampMin = "0.0"))
-    float BaseLoopVolume = 1.0f;
+    float BaseLoopVolume = 0.4f;
 
     // ZoneID -> 랜덤 SFX 설정 DataTable
     UPROPERTY(EditDefaultsOnly, Category = "Ambient|Event")
     TObjectPtr<UDataTable> ZoneAudioTable = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Ambient|Event", meta = (ClampMin = "0.0"))
+    float EventSfxVolume = 1.0f;
+
+
+    UPROPERTY(EditDefaultsOnly, Category = "Ambient|Context")
+    FName InitialZoneId = TEXT("Zone_Outdoor");
 
     // 플레이어 위치/Zone 상태 폴링 주기
     UPROPERTY(EditDefaultsOnly, Category = "Ambient|Tuning", meta = (ClampMin = "0.05"))
@@ -103,6 +111,9 @@ private:
     // 상태 캐시
     bool bRunning = false;
     bool bIsOutdoor = false;
+    bool bBaseLoopInitialized = false;
+    TWeakObjectPtr<UWorld> AmbientWorld;
+    TWeakObjectPtr<APawn> ContextPawn;
 
     FName CurrentZoneId = NAME_None;
 
@@ -113,6 +124,7 @@ private:
 private:
     UWorld* GetWorldSafe() const;
     UGMapManager* GetMapManager() const;
+    APawn* GetLocalPawn(UWorld* World) const;
 
     // 주기적으로 플레이어 위치/존을 갱신
     void TickContext();

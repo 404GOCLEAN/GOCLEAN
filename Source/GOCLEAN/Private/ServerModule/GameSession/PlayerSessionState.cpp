@@ -52,6 +52,14 @@ void APlayerSessionState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
     // InGame
     DOREPLIFETIME(APlayerSessionState, bIsAlive);
     DOREPLIFETIME(APlayerSessionState, bHasEscaped);
+    DOREPLIFETIME_CONDITION(APlayerSessionState, AmbientZoneIds, COND_OwnerOnly);
+}
+
+void APlayerSessionState::SetAmbientZoneIds(const TArray<FName>& NewZoneIds)
+{
+    if (!HasAuthority() || AmbientZoneIds == NewZoneIds) return;
+    AmbientZoneIds = NewZoneIds;
+    ForceNetUpdate();
 }
 
 void APlayerSessionState::CopyProperties(APlayerState* PlayerState)

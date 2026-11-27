@@ -29,7 +29,7 @@ public class GOCLEAN : ModuleRules
             "GOCLEAN/Public"
         });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { "VivoxCore" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "VivoxCore", "ApplicationCore" });
 
 
         // add macro
